@@ -13,6 +13,7 @@ add_custom_command(
   COMMAND
     ZEPHYR_BASE=${ZEPHYR_BASE}
     APPLICATION_BINARY_DIR=${APPLICATION_BINARY_DIR}
+    NVS_FACTORY_TOOL_SOURCES=${APPLICATION_SOURCE_DIR}/nvs_factory_test.c
     make -C ${APPLICATION_SOURCE_DIR}/nvs_factory_tool
   COMMAND ${APPLICATION_SOURCE_DIR}/nvs_factory_tool/nvs-factory-tool
   DEPENDS zephyr_generated_headers
