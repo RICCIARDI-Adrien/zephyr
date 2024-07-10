@@ -1,46 +1,64 @@
+/*
+ * Copyright (C) 2024 BayLibre.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <string.h>
 #include <zephyr/drivers/flash.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/fs/nvs.h>
 
-#include "nsi_cmdline.h"
+static int mount_nvs(struct nvs_fs *fs)
+{
+	struct flash_pages_info flash_info;
+	size_t partition_size;
+	off_t offset;
+	int i, ret;
 
-// TEST
-#define NVS_PARTITION		storage_partition
-#define NVS_PARTITION_DEVICE	FIXED_PARTITION_DEVICE(NVS_PARTITION)
-#define NVS_PARTITION_OFFSET	FIXED_PARTITION_OFFSET(NVS_PARTITION)
+	fs->flash_device = FIXED_PARTITION_DEVICE(FACTORY_NVS_PARTITION_DT_LABEL);
+	if (!device_is_ready(fs->flash_device)) {
+		printk("Flash device %s is not ready.\n", fs->flash_device->name);
+		return -1;
+	}
+	fs->offset = FIXED_PARTITION_OFFSET(FACTORY_NVS_PARTITION_DT_LABEL);
+
+	ret = flash_get_page_info_by_offs(fs->flash_device, fs->offset, &flash_info);
+	if (ret) {
+		printk("Unable to get flash page info.\n");
+		return ret;
+	}
+	partition_size = FIXED_PARTITION_SIZE(FACTORY_NVS_PARTITION_DT_LABEL);
+	fs->sector_size = flash_info.size;
+	fs->sector_count = partition_size / fs->sector_size;
+
+	// Make sure the flash partition is cleared before starting
+	offset = fs->offset;
+	for (i = 0; i < fs->sector_count; i++) {
+		ret = flash_erase(fs->flash_device, offset, fs->sector_size);
+		if (ret) {
+			printk("flash_erase() failed for sector %d (%s).\n", i, strerror(-ret));
+			return ret;
+		}
+		offset += fs->sector_size;
+	}
+
+	ret = nvs_mount(fs);
+	if (ret) {
+		printk("mvs_mount() failed (%s).\n", strerror(-ret));
+		return ret;
+	}
+
+	return 0;
+}
 
 int main(void)
 {
 	struct nvs_fs fs;
-	struct flash_pages_info flash_info;
 	int ret;
-	int argc; char **argv;
 
-	nsi_get_test_cmd_line_args(&argc, &argv);
-	printk("argc=%d\n", argc);
-	for (ret = 0; ret < argc; ret++) {
-		printk("arg %d = %s\n", ret, argv[ret]);
-	}
-
-	fs.flash_device = NVS_PARTITION_DEVICE;
-	if (!device_is_ready(fs.flash_device)) {
-		printk("Flash device %s is not ready\n", fs.flash_device->name);
-		return 0;
-	}
-	fs.offset = NVS_PARTITION_OFFSET;
-	ret = flash_get_page_info_by_offs(fs.flash_device, fs.offset, &flash_info);
-	if (ret) {
-		printk("Unable to get page info\n");
-		return 0;
-	}
-	fs.sector_size = flash_info.size;
-	fs.sector_count = 3U;
-
-	ret = nvs_mount(&fs);
-	if (ret) {
-		printk("Flash Init failed\n");
-		return 0;
-	}
+	printk("Creating an empty NVS...\n");
+	ret = mount_nvs(&fs);
 
 	return 0;
 }
