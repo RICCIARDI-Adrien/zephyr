@@ -4,10 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <nvs_factory_tool.h>
 #include <string.h>
 #include <zephyr/drivers/flash.h>
-#include <zephyr/storage/flash_map.h>
 #include <zephyr/fs/nvs.h>
+#include <zephyr/storage/flash_map.h>
+#include <zephyr/sys/poweroff.h>
+#include "nsi_main.h"
 
 static int mount_nvs(struct nvs_fs *fs)
 {
@@ -45,8 +48,30 @@ static int mount_nvs(struct nvs_fs *fs)
 
 	ret = nvs_mount(fs);
 	if (ret) {
-		printk("mvs_mount() failed (%s).\n", strerror(-ret));
+		printk("nvs_mount() failed (%s).\n", strerror(-ret));
 		return ret;
+	}
+
+	return 0;
+}
+
+static int fill_nvs(struct nvs_fs *fs)
+{
+	size_t i;
+	struct nvs_factory_tool_item_t *item;
+	ssize_t ret;
+
+	item = nvs_factory_tool_items;
+	for (i = 0; i < nvs_factory_tool_items_count; i++) {
+		printk("Writing item %zu/%zu : ID=%u, size=%u...\n",
+		       i + 1, nvs_factory_tool_items_count, item->id, item->size);
+		ret = nvs_write(fs, item->id, item->data, item->size);
+		if (ret != item->size) {
+			printk("Failed to write the item (%s).\n", strerror(-ret));
+			return -1;
+		}
+
+		item++;
 	}
 
 	return 0;
@@ -59,6 +84,19 @@ int main(void)
 
 	printk("Creating an empty NVS...\n");
 	ret = mount_nvs(&fs);
+	if (ret) {
+		printk("Error : failed to create the empty NVS.");
+		return ret;
+	}
+	printk("Successfully created an empty NVS made of %u sectors of %u bytes.\n",
+	       fs.sector_count, fs.sector_size);
 
-	return 0;
+	ret = fill_nvs(&fs);
+	if (ret) {
+		printk("Error : failed to fill the NVS.");
+		return ret;
+	}
+
+	printk("NVS generation was successful, exiting...\n");
+	nsi_exit(0);
 }
