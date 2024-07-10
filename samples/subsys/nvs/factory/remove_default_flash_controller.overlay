@@ -1,0 +1,12 @@
+/*
+ * Copyright (C) 2024 BayLibre.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	chosen {
+		/delete-property/ zephyr,code-partition;
+	};
+	/delete-node/ flash-controller@0;
+};
