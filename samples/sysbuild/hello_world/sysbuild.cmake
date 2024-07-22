@@ -1,15 +1,17 @@
 # Copyright (c) 2024 Nordic Semiconductor ASA
 # SPDX-License-Identifier: Apache-2.0
 
-if("${SB_CONFIG_REMOTE_BOARD}" STREQUAL "")
-  message(FATAL_ERROR "REMOTE_BOARD must be set to a valid board name")
-endif()
+set(FACTORY_BASE_DIR ${ZEPHYR_BASE}/samples/subsys/nvs/factory)
 
-ExternalZephyrProject_Add(
-  APPLICATION remote
-  SOURCE_DIR ${APP_DIR}/remote
-  BOARD ${SB_CONFIG_REMOTE_BOARD}
+ExternalProject_Add(nvs_factory_tool
+  SOURCE_DIR ${FACTORY_BASE_DIR}
+  CMAKE_ARGS -DFACTORY_FLASH_CONTROLLER_OVERLAY=${FACTORY_BASE_DIR}/demo_flash_controller.overlay
+  -DFACTORY_NVS_CONTENT_FILE=${FACTORY_BASE_DIR}/src/demo_nvs_content.c
+  -DFACTORY_NVS_PARTITION_DT_LABEL=storage_partition
+  -DBOARD=native_sim
+  INSTALL_COMMAND ""
+  TEST_COMMAND zephyr/zephyr.exe --flash=${APPLICATION_BINARY_DIR}/nvs_area.bin &&
+  xxd -i ${APPLICATION_BINARY_DIR}/nvs_area.bin > ${APPLICATION_BINARY_DIR}/nvs_area.h
+  TEST_AFTER_INSTALL TRUE
 )
-
-add_dependencies(${DEFAULT_IMAGE} remote)
-sysbuild_add_dependencies(FLASH ${DEFAULT_IMAGE} remote)
+add_dependencies(${DEFAULT_IMAGE} nvs_factory_tool)
