@@ -6,3 +6,5 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(hello_world)
 target_sources(app PRIVATE src/main.c)
+
+zephyr_linker_sources(SECTIONS custom-sections.ld)

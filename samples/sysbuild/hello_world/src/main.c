@@ -9,6 +9,14 @@
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/printk.h>
 
+/*static const unsigned int __attribute__((section(".nvs_partition_0"))) test[100] = {
+	0x1234, 0x5678, 0x1000
+};*/
+
+__in_section(nvs_partition_0, static, var) unsigned int test2[100] = {
+	0x1234, 0x5678, 0x1000
+};
+
 #define NVS_PARTITION storage_partition
 
 int main(void)
