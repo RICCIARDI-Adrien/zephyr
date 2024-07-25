@@ -9,9 +9,8 @@
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/printk.h>
 
-__in_section(nvs_partition, static, var) unsigned int test[100] = {
-	0x1234, 0x5678, 0x1000
-};
+// Need to be included later because it depends on specific Zephyr headers (TODO fix)
+#include <nvs_area.h>
 
 #define NVS_PARTITION storage_partition
 

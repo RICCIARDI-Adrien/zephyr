@@ -10,14 +10,14 @@
 			compatible = "soc-nv-flash";
 			erase-block-size = < 0x800 >;
 			write-block-size = < 0x2 >;
-			reg = < 0x0 0x40000 >;
+			reg = < 0x0 0x1800 >;
 			partitions {
 				compatible = "fixed-partitions";
 				#address-cells = < 0x1 >;
 				#size-cells = < 0x1 >;
-				storage_partition: partition@3e800 {
+				storage_partition: partition@0 {
 					label = "storage";
-					reg = < 0x3e800 0x1800 >;
+					reg = < 0x0 0x1800 >;
 				};
 			};
 		};
