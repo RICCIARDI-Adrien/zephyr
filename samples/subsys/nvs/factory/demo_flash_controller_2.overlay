@@ -1,0 +1,32 @@
+/*
+ * Copyright (C) 2024 BayLibre.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	/* Entirely specify the flash controller 0 with the factory target board settings */
+	flashcontroller0: flash-controller@0 {
+		compatible = "zephyr,sim-flash";
+		reg = < 0x0 0x200000 >;
+		#address-cells = < 0x1 >;
+		#size-cells = < 0x1 >;
+		erase-value = < 0xFF >;
+		flash0: flash@0 {
+			status = "okay";
+			compatible = "soc-nv-flash";
+			erase-block-size = < 0x1000 >;
+			write-block-size = < 0x1 >;
+			reg = < 0x0 0x6000 >;
+			partitions {
+				compatible = "fixed-partitions";
+				#address-cells = < 0x1 >;
+				#size-cells = < 0x1 >;
+				storage_partition: partition@0 {
+					label = "storage";
+					reg = < 0x0 0x6000 >;
+				};
+			};
+		};
+	};
+};
