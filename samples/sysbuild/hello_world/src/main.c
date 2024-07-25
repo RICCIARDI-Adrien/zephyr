@@ -16,10 +16,12 @@
 
 int main(void)
 {
-	int rc = 0;
+	int rc = 0, i;
 	struct nvs_fs fs;
 	struct flash_pages_info flash_info;
 	uint8_t buf[32];
+	uint16_t word;
+	uint32_t double_word;
 
 	printk("Hello world from %s\n", CONFIG_BOARD_TARGET);
 
@@ -44,7 +46,29 @@ int main(void)
 		printk("Failed to read ID 12 (%s)\n", strerror(-rc));
 	else {
 		buf[sizeof(buf) - 1] = 0;
-		printf("ID 12 : \"%s\".\n", buf);
+		printk("ID 12 (string equal to \"test string\") : \"%s\".\n", buf);
+	}
+
+	rc = nvs_read(&fs, 0, &word, sizeof(word));
+	if (rc < 0)
+		printk("Failed to read ID 0 (%s)\n", strerror(-rc));
+	else
+		printk("ID 0 (16-bit integer equal to 0x1234) : 0x%X.\n", word);
+
+	rc = nvs_read(&fs, 3, &double_word, sizeof(double_word));
+	if (rc < 0)
+		printk("Failed to read ID 3 (%s)\n", strerror(-rc));
+	else
+		printk("ID 3 (32-bit integer equal to 0x5678) : 0x%X.\n", double_word);
+
+	rc = nvs_read(&fs, 27349, buf, sizeof(buf));
+	if (rc < 0)
+		printk("Failed to read ID 27349 (%s)\n", strerror(-rc));
+	else {
+		printk("ID 27349 (6-byte array equal to : 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF) : ");
+		for (i = 0; i < 6; i++)
+			printk("0x%X, ", buf[i]);
+		printk("\n");
 	}
 
 	return 0;
