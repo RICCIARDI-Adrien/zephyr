@@ -11,8 +11,16 @@ if(NOT DEFINED FACTORY_NVS_CONTENT_FILE)
   message(FATAL_ERROR "You must specify the FACTORY_NVS_CONTENT_FILE variable, \
   see README for an example.")
 endif()
+if(NOT DEFINED FACTORY_NVS_OUTPUT_FILE)
+  message(FATAL_ERROR "You must specify the FACTORY_NVS_OUTPUT_FILE variable, \
+  see README for an example.")
+endif()
 if(NOT DEFINED FACTORY_NVS_PARTITION_DT_LABEL)
   message(FATAL_ERROR "You must specify the FACTORY_NVS_PARTITION_DT_LABEL variable, \
+  see README for an example.")
+endif()
+if(NOT DEFINED FACTORY_NVS_LINKER_SECTION)
+  message(FATAL_ERROR "You must specify the FACTORY_NVS_LINKER_SECTION variable, \
   see README for an example.")
 endif()
 if(NOT DEFINED FACTORY_FLASH_ERASE_VALUE)
@@ -77,3 +85,13 @@ project(nvs)
 target_sources(app PRIVATE src/main.c ${FACTORY_NVS_CONTENT_FILE})
 target_compile_definitions(app PRIVATE FACTORY_NVS_PARTITION_DT_LABEL=${FACTORY_NVS_PARTITION_DT_LABEL})
 target_include_directories(app PRIVATE include)
+
+enable_testing()
+add_test(NAME generate_nvs COMMAND bash -c "\
+  zephyr/zephyr.exe --flash=${FACTORY_BINARY_DIR}/nvs_area.bin && \
+  mkdir -p $(dirname ${FACTORY_NVS_OUTPUT_FILE}) && \
+  xxd -i ${FACTORY_BINARY_DIR}/nvs_area.bin > ${FACTORY_NVS_OUTPUT_FILE} && \
+  sed -i -e '1d' ${FACTORY_NVS_OUTPUT_FILE} && \
+  sed -i -e '1i __in_section(${FACTORY_NVS_LINKER_SECTION}, static, var) unsigned char nvs_${FACTORY_NVS_PARTITION_DT_LABEL}[] = {' ${FACTORY_NVS_OUTPUT_FILE} \
+  "
+)
