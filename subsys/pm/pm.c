@@ -148,6 +148,8 @@ bool pm_system_suspend(int32_t kernel_ticks)
 
 	SYS_PORT_TRACING_FUNC_ENTER(pm, system_suspend, kernel_ticks);
 
+	printk("\033[34mpm_system_suspend debut\033[0m\n");
+
 	/*
 	 * CPU needs to be fully wake up before the event is triggered.
 	 * We need to find out first the ticks to the next event
@@ -223,6 +225,7 @@ bool pm_system_suspend(int32_t kernel_ticks)
 	pm_state_set(z_cpus_pm_state[id].state, z_cpus_pm_state[id].substate_id);
 	pm_stats_stop();
 
+	printk("\033[34mpm_system_suspend resume\033[0m\n");
 	/* Wake up sequence starts here */
 	pm_stats_update(z_cpus_pm_state[id].state);
 	pm_system_resume();
