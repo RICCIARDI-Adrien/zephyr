@@ -300,11 +300,13 @@ static void s2idle_exit(uint8_t substate_id)
 	b = 0;
 	for (i = 0; i < ARRAY_SIZE(pendings); i++)
 	{
-		if (pendings[i])
-			b++;
-		printk("pending[%u] = %u\n", i, pendings[i]);
+		if (pendings[i]) b++;
 	}
-	printk("Nombre pending : %u.\n", b);
+	printk("Pending interrupts count : %u.\n", b);
+	if (b > 0)
+	{
+		for (i = 0; i < ARRAY_SIZE(pendings); i++) printk("pending[%u] = %u\n", i, pendings[i]);
+	}
 
 	printk("s2idle_exit substate_id=%u\n", substate_id);
 
