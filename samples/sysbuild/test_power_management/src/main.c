@@ -31,7 +31,6 @@ static void watchdog_callback(int channel_id, void *user_data)
 	while (1);
 }
 
-#ifdef NRF_RADIOCORE
 static void thread_background_entry(void *p1, void *p2, void *p3)
 {
 	unsigned int i = 0;
@@ -49,9 +48,8 @@ static void thread_background_entry(void *p1, void *p2, void *p3)
 		k_msleep(10000);
 	}
 }
-// Preemptive thread
-K_THREAD_DEFINE(thread_background, 256, thread_background_entry, NULL, NULL, NULL, 2, K_ESSENTIAL, 1);
-#endif
+// Higher priority thread to be able to interrupt the busy waits in the main thread
+K_THREAD_DEFINE(thread_background, 256, thread_background_entry, NULL, NULL, NULL, -1, K_ESSENTIAL, 1);
 
 static k_tid_t thread_id_main;
 
@@ -71,11 +69,9 @@ int main(void)
 	int states_count, ret;
 	const struct pm_state_info *states;
 
-#ifndef NRF_RADIOCORE
 	ret = watchdog_init();
 	if (ret < 0)
 		return -1;
-#endif
 
 	thread_id_main = k_current_get();
 #ifdef NRF_RADIOCORE
@@ -111,8 +107,7 @@ int main(void)
 }
 #else
 {
-	volatile int a = 0;
-	int channel;
+	int channel, i = 0;
 	uint32_t start_time = 0, current_time;
 
 	printk("Running forever at 100%% CPU...\n");
@@ -125,17 +120,17 @@ int main(void)
 
 	while (1)
 	{
-		a += 1239;
-		a *= -7;
-		a /= 11;
+		printk("MAIN %d\n", i);
+		i++;
 
-		current_time = k_uptime_get_32();
-		if ((current_time - start_time) >= 1000)
+		// Wait 1 second without sleeping, so we do not enter any power management state
+		do
 		{
-			start_time = current_time;
-			task_wdt_feed(channel);
-			printk("Watchdog feed.\n");
-		}
+			current_time = k_uptime_get_32();
+		} while ((current_time - start_time) < 1000);
+		start_time = current_time;
+
+		task_wdt_feed(channel);
 	}
 }
 #endif
