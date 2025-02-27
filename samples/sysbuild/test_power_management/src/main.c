@@ -34,10 +34,18 @@ static void watchdog_callback(int channel_id, void *user_data)
 static void thread_background_entry(void *p1, void *p2, void *p3)
 {
 	unsigned int i = 0;
+	int channel;
 
 	ARG_UNUSED(p1);
 	ARG_UNUSED(p2);
 	ARG_UNUSED(p3);
+
+	channel = task_wdt_add(2000, watchdog_callback, "background");
+	if (channel < 0)
+	{
+		printk("Failed to initialize the watchdog for background thread; err=%d", -channel);
+		return;
+	}
 
 	printk("Background thread is ready.\n");
 
@@ -45,7 +53,9 @@ static void thread_background_entry(void *p1, void *p2, void *p3)
 	{
 		printk("BACKGROUND %u\n", i);
 		i++;
-		k_msleep(10000);
+
+		task_wdt_feed(channel);
+		k_msleep(1000);
 	}
 }
 // Higher priority thread to be able to interrupt the busy waits in the main thread
@@ -107,7 +117,8 @@ int main(void)
 }
 #else
 {
-	int channel, i = 0;
+	unsigned int i = 0;
+	int channel;
 	uint32_t start_time = 0, current_time;
 
 	printk("Running forever at 100%% CPU...\n");
@@ -120,7 +131,7 @@ int main(void)
 
 	while (1)
 	{
-		printk("MAIN %d\n", i);
+		printk("MAIN %u\n", i);
 		i++;
 
 		// Wait 1 second without sleeping, so we do not enter any power management state
