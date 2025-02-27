@@ -1,8 +1,13 @@
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/pm/pm.h>
 #include <zephyr/sys/printk.h>
 
 #include "watchdog.h"
+
+#ifdef NRF_RADIOCORE
+static const struct gpio_dt_spec radio_led = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_led), gpios);
+#endif
 
 static void __attribute__((unused)) burn_cpu(void)
 {
@@ -67,8 +72,8 @@ static k_tid_t thread_id_main;
 static void notifier_exit(enum pm_state state)
 {
 	printk("Resuming...\n");
-	k_thread_resume(thread_id_main);
-	k_thread_resume(thread_background);
+	//k_thread_resume(thread_id_main);
+	//k_thread_resume(thread_background);
 }
 
 static struct pm_notifier notifier = { .state_exit = notifier_exit };
@@ -94,25 +99,38 @@ int main(void)
 	states_count = pm_state_cpu_get_all(0, &states);
 	printk("Power states count : %d.\n", states_count);
 
-
 #ifdef NRF_RADIOCORE
 {
 	unsigned int i = 0;
+
+	if (!gpio_is_ready_dt(&radio_led))
+	{
+		printk("Radio LED GPIO is not ready.\n");
+		return -1;
+	}
+
+	if (gpio_pin_configure_dt(&radio_led, GPIO_OUTPUT_ACTIVE) < 0)
+	{
+		printk("Failed to configure the Radio LED GPIO.\n");
+		return -1;
+	}
 
 	printk("Running for some seconds at 100%% CPU...\n");
 	//burn_cpu();
 
 	printk("Forcing deep sleep state...\n");
 	pm_state_force(0, &states[0]);
+	/*task_wdt_suspend();
 	k_thread_suspend(thread_background);
-	k_thread_suspend(thread_id_main);
+	k_thread_suspend(thread_id_main);*/
 
 	printk("Wake-up !\n");
 	while (1)
 	{
 		printk("MAIN %u\n", i);
 		i++;
-		k_msleep(8000);
+		gpio_pin_toggle_dt(&radio_led);
+		k_msleep(1000);
 	}
 }
 #else
