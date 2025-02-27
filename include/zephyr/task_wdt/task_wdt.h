@@ -102,6 +102,11 @@ int task_wdt_delete(int channel_id);
  */
 int task_wdt_feed(int channel_id);
 
+/** TODO */
+void task_wdt_suspend();
+
+void task_wdt_resume();
+
 #ifdef __cplusplus
 }
 #endif

@@ -179,7 +179,7 @@ int task_wdt_add(uint32_t reload_period, task_wdt_callback_t callback,
 			if (!hw_wdt_started && hw_wdt_dev) {
 				/* also start fallback hw wdt */
 				wdt_setup(hw_wdt_dev,
-					WDT_OPT_PAUSE_HALTED_BY_DBG);
+					WDT_OPT_PAUSE_HALTED_BY_DBG | WDT_OPT_PAUSE_IN_SLEEP);
 				hw_wdt_started = true;
 			}
 #endif
@@ -241,4 +241,37 @@ int task_wdt_feed(int channel_id)
 	k_sched_unlock();
 
 	return 0;
+}
+
+void task_wdt_suspend()
+{
+	k_spinlock_key_t key;
+
+	/*
+	 * Prevent all task watchdog channels from triggering.
+	 * Protect the timer access with the spinlock to avoid the timer being started
+	 * concurrently by a call to schedule_next_timeout().
+	 */
+	key = k_spin_lock(&channels_lock);
+	k_timer_stop(&timer);
+	k_spin_unlock(&channels_lock, key);
+
+#ifdef CONFIG_TASK_WDT_HW_FALLBACK
+	/*
+	 * Give a whole hardware watchdog timer period of time to the application to put
+	 * the system in a suspend mode that will pause the hardware watchdog.
+	 */
+	if (hw_wdt_started) {
+		wdt_feed(hw_wdt_dev, hw_wdt_channel);
+	}
+#endif
+}
+
+void task_wdt_resume()
+{
+	k_spinlock_key_t key;
+
+	key = k_spin_lock(&channels_lock);
+	schedule_next_timeout(sys_clock_tick_get());
+	k_spin_unlock(&channels_lock, key);
 }
