@@ -7,3 +7,22 @@
 		watchdog0 = &wdt010;
 	};
 };
+
+&gpiote130 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+/ {
+	leds {
+		compatible = "gpio-leds";
+
+		radio_led: led {
+			gpios = < &gpio1 1 GPIO_ACTIVE_HIGH >;
+			label = "Radio LED";
+		};
+	};
+};
