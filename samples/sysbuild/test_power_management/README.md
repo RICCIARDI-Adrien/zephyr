@@ -8,3 +8,4 @@ west build -p -b nrf54h20dk/nrf54h20/cpuapp -T sample.sysbuild.test_power_manage
 # DK configuration
 
 * Connect a wire from Port P1 pin 1 to Port P9 pin 1. This will connect LED1 to the Radio core LED.
+* Connect a wire from Port P1 pin 2 to Port P0 pin 9. This will connect BUTTON 1 to the Radio core button.
