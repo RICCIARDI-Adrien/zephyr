@@ -7,6 +7,8 @@
 
 #ifdef NRF_RADIOCORE
 static const struct gpio_dt_spec radio_led = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_led), gpios);
+static const struct gpio_dt_spec radio_button = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_button), gpios);
+static struct gpio_callback radio_button_callback_data;
 #endif
 
 static void __attribute__((unused)) burn_cpu(void)
@@ -75,8 +77,16 @@ static void notifier_exit(enum pm_state state)
 	//k_thread_resume(thread_id_main);
 	//k_thread_resume(thread_background);
 }
-
 static struct pm_notifier notifier = { .state_exit = notifier_exit };
+
+static void gpio_callback(const struct device *port, struct gpio_callback *cb, gpio_port_pins_t pins)
+{
+	ARG_UNUSED(port);
+	ARG_UNUSED(cb);
+	ARG_UNUSED(pins);
+
+	printk("GPIO interrupt callback.\n");
+}
 #endif
 
 int main(void)
@@ -108,10 +118,34 @@ int main(void)
 		printk("Radio LED GPIO is not ready.\n");
 		return -1;
 	}
+	if (!gpio_is_ready_dt(&radio_button))
+	{
+		printk("Radio button GPIO is not ready.\n");
+		return -1;
+	}
 
 	if (gpio_pin_configure_dt(&radio_led, GPIO_OUTPUT_ACTIVE) < 0)
 	{
 		printk("Failed to configure the Radio LED GPIO.\n");
+		return -1;
+	}
+	ret = gpio_pin_configure_dt(&radio_button, GPIO_INPUT | GPIO_PULL_UP);
+	if (ret < 0)
+	{
+		printk("Failed to configure the Radio button GPIO (%d).\n", ret);
+		return -1;
+	}
+
+	ret = gpio_pin_interrupt_configure_dt(&radio_button, GPIO_INT_EDGE_FALLING);
+	if (ret < 0)
+	{
+		printk("Failed to configure the Radio button interrupt (%d).\n", ret);
+		return -1;
+	}
+	gpio_init_callback(&radio_button_callback_data, gpio_callback, BIT(radio_button.pin));
+	if (gpio_add_callback_dt(&radio_button, &radio_button_callback_data) < 0)
+	{
+		printk("Failed to add an interrupt callback to Radio core GPIO.\n");
 		return -1;
 	}
 
@@ -120,9 +154,9 @@ int main(void)
 
 	printk("Forcing deep sleep state...\n");
 	pm_state_force(0, &states[0]);
-	/*task_wdt_suspend();
+	task_wdt_suspend();
 	k_thread_suspend(thread_background);
-	k_thread_suspend(thread_id_main);*/
+	k_thread_suspend(thread_id_main);
 
 	printk("Wake-up !\n");
 	while (1)

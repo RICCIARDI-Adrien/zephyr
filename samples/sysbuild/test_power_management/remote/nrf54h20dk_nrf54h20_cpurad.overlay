@@ -14,6 +14,8 @@
 
 &gpio1 {
 	status = "okay";
+	/* Enable the input sense feature for the button */
+	sense-edge-mask = <0x04>;
 };
 
 / {
@@ -23,6 +25,15 @@
 		radio_led: led {
 			gpios = < &gpio1 1 GPIO_ACTIVE_HIGH >;
 			label = "Radio LED";
+		};
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+
+		radio_button: button {
+			gpios = < &gpio1 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP) >;
+			label = "Radio button";
 		};
 	};
 };
