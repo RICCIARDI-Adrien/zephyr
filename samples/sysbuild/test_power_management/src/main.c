@@ -7,8 +7,11 @@
 
 #ifdef NRF_RADIOCORE
 static const struct gpio_dt_spec radio_led = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_led), gpios);
-static const struct gpio_dt_spec radio_button = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_button), gpios);
-static struct gpio_callback radio_button_callback_data;
+static const struct gpio_dt_spec radio_button_suspend = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_button_suspend), gpios);
+static const struct gpio_dt_spec radio_button_resume = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_button_resume), gpios);
+
+static struct gpio_callback suspend_radio_button_callback_data;
+static struct gpio_callback resume_radio_button_callback_data;
 #endif
 
 static void __attribute__((unused)) burn_cpu(void)
@@ -74,8 +77,6 @@ static k_tid_t thread_id_main;
 static void notifier_exit(enum pm_state state)
 {
 	printk("Resuming...\n");
-	//k_thread_resume(thread_id_main);
-	//k_thread_resume(thread_background);
 }
 static struct pm_notifier notifier = { .state_exit = notifier_exit };
 
@@ -85,7 +86,22 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 	ARG_UNUSED(cb);
 	ARG_UNUSED(pins);
 
-	printk("GPIO interrupt callback.\n");
+	printk("\033[35mGPIO interrupt callback.\033[0m\n");
+
+	if (pins & (1 << 2))
+	{
+		printk("\033[35mSUSPEND\033[0m\n");
+		task_wdt_suspend();
+		k_thread_suspend(thread_background);
+		k_thread_suspend(thread_id_main);
+	}
+	else if (pins & (1 << 3))
+	{
+		printk("\033[35mRESUME\033[0m\n");
+		task_wdt_resume();
+		k_thread_resume(thread_id_main);
+		k_thread_resume(thread_background);
+	}
 }
 #endif
 
@@ -118,9 +134,14 @@ int main(void)
 		printk("Radio LED GPIO is not ready.\n");
 		return -1;
 	}
-	if (!gpio_is_ready_dt(&radio_button))
+	if (!gpio_is_ready_dt(&radio_button_resume))
 	{
-		printk("Radio button GPIO is not ready.\n");
+		printk("Suspend Radio button GPIO is not ready.\n");
+		return -1;
+	}
+	if (!gpio_is_ready_dt(&radio_button_suspend))
+	{
+		printk("Resume Radio button GPIO is not ready.\n");
 		return -1;
 	}
 
@@ -129,36 +150,48 @@ int main(void)
 		printk("Failed to configure the Radio LED GPIO.\n");
 		return -1;
 	}
-	ret = gpio_pin_configure_dt(&radio_button, GPIO_INPUT | GPIO_PULL_UP);
+	ret = gpio_pin_configure_dt(&radio_button_resume, GPIO_INPUT | GPIO_PULL_UP);
 	if (ret < 0)
 	{
-		printk("Failed to configure the Radio button GPIO (%d).\n", ret);
+		printk("Failed to configure the suspend Radio button GPIO (%d).\n", ret);
+		return -1;
+	}
+	ret = gpio_pin_configure_dt(&radio_button_suspend, GPIO_INPUT | GPIO_PULL_UP);
+	if (ret < 0)
+	{
+		printk("Failed to configure the resume Radio button GPIO (%d).\n", ret);
 		return -1;
 	}
 
-	ret = gpio_pin_interrupt_configure_dt(&radio_button, GPIO_INT_EDGE_FALLING);
+	ret = gpio_pin_interrupt_configure_dt(&radio_button_suspend, GPIO_INT_EDGE_FALLING);
 	if (ret < 0)
 	{
-		printk("Failed to configure the Radio button interrupt (%d).\n", ret);
+		printk("Failed to configure the suspend Radio button interrupt (%d).\n", ret);
 		return -1;
 	}
-	gpio_init_callback(&radio_button_callback_data, gpio_callback, BIT(radio_button.pin));
-	if (gpio_add_callback_dt(&radio_button, &radio_button_callback_data) < 0)
+	ret = gpio_pin_interrupt_configure_dt(&radio_button_resume, GPIO_INT_EDGE_FALLING);
+	if (ret < 0)
 	{
-		printk("Failed to add an interrupt callback to Radio core GPIO.\n");
+		printk("Failed to configure the resume Radio button interrupt (%d).\n", ret);
+		return -1;
+	}
+
+	gpio_init_callback(&suspend_radio_button_callback_data, gpio_callback, BIT(radio_button_suspend.pin));
+	if (gpio_add_callback_dt(&radio_button_suspend, &suspend_radio_button_callback_data) < 0)
+	{
+		printk("Failed to add a callback to the suspend Radio button GPIO.\n");
+		return -1;
+	}
+	gpio_init_callback(&resume_radio_button_callback_data, gpio_callback, BIT(radio_button_resume.pin));
+	if (gpio_add_callback_dt(&radio_button_resume, &resume_radio_button_callback_data) < 0)
+	{
+		printk("Failed to add a callback to the resume Radio button GPIO.\n");
 		return -1;
 	}
 
 	printk("Running for some seconds at 100%% CPU...\n");
 	//burn_cpu();
 
-	printk("Forcing deep sleep state...\n");
-	pm_state_force(0, &states[0]);
-	task_wdt_suspend();
-	k_thread_suspend(thread_background);
-	k_thread_suspend(thread_id_main);
-
-	printk("Wake-up !\n");
 	while (1)
 	{
 		printk("MAIN %u\n", i);
