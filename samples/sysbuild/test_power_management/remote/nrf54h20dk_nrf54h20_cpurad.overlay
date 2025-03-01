@@ -14,8 +14,8 @@
 
 &gpio1 {
 	status = "okay";
-	/* Enable the input sense feature for the button */
-	sense-edge-mask = <0x04>;
+	/* Enable the input sense feature for the resume button */
+	sense-edge-mask = <0x0C>;
 };
 
 / {
@@ -31,9 +31,14 @@
 	buttons {
 		compatible = "gpio-keys";
 
-		radio_button: button {
+		radio_button_suspend: button2 {
 			gpios = < &gpio1 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP) >;
-			label = "Radio button";
+			label = "Radio button suspend";
+		};
+
+		radio_button_resume: button3 {
+			gpios = < &gpio1 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP) >;
+			label = "Radio button resume";
 		};
 	};
 };
