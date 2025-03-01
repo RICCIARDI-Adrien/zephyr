@@ -270,8 +270,24 @@ void task_wdt_suspend()
 void task_wdt_resume()
 {
 	k_spinlock_key_t key;
+	int64_t current_ticks;
 
 	key = k_spin_lock(&channels_lock);
-	schedule_next_timeout(sys_clock_tick_get());
+
+	/*
+	 * Feed all enabled channels, so the application threads have time to resume
+	 * feeding the channels by themselves.
+	 */
+	current_ticks = sys_clock_tick_get();
+	for (size_t id = 0; id < ARRAY_SIZE(channels); id++) {
+		if (channels[id].reload_period != 0) {
+			channels[id].timeout_abs_ticks = current_ticks +
+				k_ms_to_ticks_ceil64(channels[id].reload_period);
+		}
+	}
+
+	/* Restart the Task Watchdog timer */
+	schedule_next_timeout(current_ticks);
+
 	k_spin_unlock(&channels_lock, key);
 }
