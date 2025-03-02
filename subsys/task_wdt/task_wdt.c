@@ -246,3 +246,52 @@ int task_wdt_feed(int channel_id)
 
 	return 0;
 }
+
+void task_wdt_suspend(void)
+{
+	k_spinlock_key_t key;
+
+	/*
+	 * Prevent all task watchdog channels from triggering.
+	 * Protect the timer access with the spinlock to avoid the timer being started
+	 * concurrently by a call to schedule_next_timeout().
+	 */
+	key = k_spin_lock(&channels_lock);
+	k_timer_stop(&timer);
+	k_spin_unlock(&channels_lock, key);
+
+#ifdef CONFIG_TASK_WDT_HW_FALLBACK
+	/*
+	 * Give a whole hardware watchdog timer period of time to the application to put
+	 * the system in a suspend mode that will pause the hardware watchdog.
+	 */
+	if (hw_wdt_started) {
+		wdt_feed(hw_wdt_dev, hw_wdt_channel);
+	}
+#endif
+}
+
+void task_wdt_resume(void)
+{
+	k_spinlock_key_t key;
+	int64_t current_ticks;
+
+	key = k_spin_lock(&channels_lock);
+
+	/*
+	 * Feed all enabled channels, so the application threads have time to resume
+	 * feeding the channels by themselves.
+	 */
+	current_ticks = sys_clock_tick_get();
+	for (size_t id = 0; id < ARRAY_SIZE(channels); id++) {
+		if (channels[id].reload_period != 0) {
+			channels[id].timeout_abs_ticks = current_ticks +
+				k_ms_to_ticks_ceil64(channels[id].reload_period);
+		}
+	}
+
+	/* Restart the Task Watchdog timer */
+	schedule_next_timeout(current_ticks);
+
+	k_spin_unlock(&channels_lock, key);
+}
