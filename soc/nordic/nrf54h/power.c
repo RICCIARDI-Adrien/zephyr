@@ -16,6 +16,8 @@
 #include "soc.h"
 #include "pm_s2ram.h"
 
+#define ENABLE_DEBUG_MESSAGES 0
+
 extern sys_snode_t soc_node;
 
 static void common_suspend(void)
@@ -79,15 +81,19 @@ void nrf_poweroff(void)
 	CODE_UNREACHABLE;
 }
 
+#if ENABLE_DEBUG_MESSAGES
 #if defined(NRF_RADIOCORE)
 uint32_t pendings[93];
 #else
 uint32_t pendings[79];
 #endif
+#endif
 
 static void s2idle_enter(uint8_t substate_id)
 {
+#if ENABLE_DEBUG_MESSAGES
 	printk("s2idle_enter substate_id=%u\n", substate_id);
+#endif
 
 	switch (substate_id) {
 	case 0:
@@ -100,12 +106,15 @@ static void s2idle_enter(uint8_t substate_id)
 		soc_lrcconf_poweron_request(&soc_node, NRF_LRCCONF_POWER_MAIN);
 #endif
 		common_suspend();
+#if ENABLE_DEBUG_MESSAGES
 		printk("s2idle_enter fin code enter suspend\n");
+#endif
 		break;
 	default: /* Unknown substate. */
 		return;
 	}
 
+#if ENABLE_DEBUG_MESSAGES
 #if defined(NRF_RADIOCORE)
 	pendings[0] = NVIC_GetPendingIRQ(SPU000_IRQn);
 	pendings[1] = NVIC_GetPendingIRQ(MPC_IRQn);
@@ -281,6 +290,7 @@ static void s2idle_enter(uint8_t substate_id)
 	pendings[77] = NVIC_GetPendingIRQ(SERIAL6_IRQn);
 	pendings[78] = NVIC_GetPendingIRQ(SERIAL7_IRQn);
 #endif
+#endif
 
 	__set_BASEPRI(0);
 	__ISB();
@@ -290,6 +300,7 @@ static void s2idle_enter(uint8_t substate_id)
 
 static void s2idle_exit(uint8_t substate_id)
 {
+#if ENABLE_DEBUG_MESSAGES
 	int b, i;
 
 #if defined(NRF_RADIOCORE)
@@ -309,6 +320,7 @@ static void s2idle_exit(uint8_t substate_id)
 	}
 
 	printk("s2idle_exit substate_id=%u\n", substate_id);
+#endif
 
 	switch (substate_id) {
 	case 0:

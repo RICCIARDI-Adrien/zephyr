@@ -23,6 +23,8 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(pm, CONFIG_PM_LOG_LEVEL);
 
+#define ENABLE_DEBUG_MESSAGES 0
+
 static ATOMIC_DEFINE(z_post_ops_required, CONFIG_MP_MAX_NUM_CPUS);
 static sys_slist_t pm_notifiers = SYS_SLIST_STATIC_INIT(&pm_notifiers);
 
@@ -148,7 +150,9 @@ bool pm_system_suspend(int32_t kernel_ticks)
 
 	SYS_PORT_TRACING_FUNC_ENTER(pm, system_suspend, kernel_ticks);
 
+#if ENABLE_DEBUG_MESSAGES
 	printk("\033[34mpm_system_suspend debut\033[0m\n");
+#endif
 
 	/*
 	 * CPU needs to be fully wake up before the event is triggered.
@@ -225,7 +229,9 @@ bool pm_system_suspend(int32_t kernel_ticks)
 	pm_state_set(z_cpus_pm_state[id].state, z_cpus_pm_state[id].substate_id);
 	pm_stats_stop();
 
+#if ENABLE_DEBUG_MESSAGES
 	printk("\033[34mpm_system_suspend resume\033[0m\n");
+#endif
 	/* Wake up sequence starts here */
 	pm_stats_update(z_cpus_pm_state[id].state);
 	pm_system_resume();
