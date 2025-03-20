@@ -5,12 +5,19 @@
 
 #include "watchdog.h"
 
+#define MAX_SUSPENDABLE_THREADS_COUNT 10
+
 static const struct gpio_dt_spec radio_led = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_led), gpios);
 static const struct gpio_dt_spec radio_button_suspend = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_button_suspend), gpios);
 static const struct gpio_dt_spec radio_button_resume = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_button_resume), gpios);
 
 static struct gpio_callback suspend_radio_button_callback_data;
 static struct gpio_callback resume_radio_button_callback_data;
+
+static volatile bool enable_notifier_message = false;
+
+static size_t suspendable_threads_count;
+static k_tid_t suspendable_thread_ids[MAX_SUSPENDABLE_THREADS_COUNT];
 
 static void __attribute__((unused)) burn_cpu(void)
 {
@@ -54,15 +61,68 @@ static void thread_background_entry(void *p1, void *p2, void *p3)
 // Higher priority thread to be able to interrupt the busy waits in the main thread
 K_THREAD_DEFINE(thread_background, 512, thread_background_entry, NULL, NULL, NULL, -1, K_ESSENTIAL, 1);
 
-static k_tid_t thread_id_main;
-static volatile bool enable_notifier_message = false;
-
 static void notifier_exit(enum pm_state state)
 {
 	if (enable_notifier_message)
 		printk("Resuming...\n");
 }
 static struct pm_notifier notifier = { .state_exit = notifier_exit };
+
+static void cache_suspendable_thread_callback(const struct k_thread *thread, void *user_data)
+{
+	k_tid_t thread_id;
+	const char *name;
+	bool keep_thread = false;
+
+	ARG_UNUSED(user_data);
+
+	// Retrieve the current thread name
+	thread_id = (k_tid_t) thread;
+	name = k_thread_name_get(thread_id);
+
+	// Do not try to identify the thread if it has no name
+	if (name == NULL)
+		return;
+
+	// The shell thread is always ready and keeps waking the system, so it needs to be suspended
+	if (strcmp(name, "main") == 0)
+		keep_thread = true;
+	else if (strcmp(name, "shell_uart") == 0)
+		keep_thread = true;
+	else if (strcmp(name, "thread_background") == 0)
+		keep_thread = true;
+
+	if (keep_thread)
+	{
+		if (suspendable_threads_count >= MAX_SUSPENDABLE_THREADS_COUNT)
+		{
+			printk("No more room in the suspendable threads array.");
+			k_sleep(K_FOREVER);
+		}
+		suspendable_thread_ids[suspendable_threads_count] = thread_id;
+		suspendable_threads_count++;
+	}
+}
+
+static void cache_suspendable_threads()
+{
+    suspendable_threads_count = 0;
+
+    k_thread_foreach(cache_suspendable_thread_callback, NULL);
+
+    printk("Cached %zu suspendable threads.\n", suspendable_threads_count);
+}
+
+static void suspend_threads()
+{
+    for (size_t i = 0; i < suspendable_threads_count; i++)
+        k_thread_suspend(suspendable_thread_ids[i]);
+}
+
+static void resume_threads() {
+    for (size_t i = 0; i < suspendable_threads_count; i++)
+        k_thread_resume(suspendable_thread_ids[i]);
+}
 
 static void gpio_callback(const struct device *port, struct gpio_callback *cb, gpio_port_pins_t pins)
 {
@@ -77,15 +137,13 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 		enable_notifier_message = true;
 		printk("\033[35mSUSPEND\033[0m\n");
 		task_wdt_suspend();
-		k_thread_suspend(thread_background);
-		k_thread_suspend(thread_id_main);
+		suspend_threads();
 	}
 	else if (pins & (1 << 3))
 	{
 		printk("\033[35mRESUME\033[0m\n");
 		task_wdt_resume();
-		k_thread_resume(thread_id_main);
-		k_thread_resume(thread_background);
+		resume_threads();
 		enable_notifier_message = false;
 	}
 }
@@ -96,11 +154,11 @@ int main(void)
 	const struct pm_state_info *states;
 	unsigned int i = 0;
 
+	cache_suspendable_threads();
+
 	ret = watchdog_init();
 	if (ret < 0)
 		return -1;
-
-	thread_id_main = k_current_get();
 
 	pm_notifier_register(&notifier);
 
