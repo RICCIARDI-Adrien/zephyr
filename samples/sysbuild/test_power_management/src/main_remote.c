@@ -52,7 +52,7 @@ static void thread_background_entry(void *p1, void *p2, void *p3)
 	}
 }
 // Higher priority thread to be able to interrupt the busy waits in the main thread
-K_THREAD_DEFINE(thread_background, 256, thread_background_entry, NULL, NULL, NULL, -1, K_ESSENTIAL, 1);
+K_THREAD_DEFINE(thread_background, 512, thread_background_entry, NULL, NULL, NULL, -1, K_ESSENTIAL, 1);
 
 static k_tid_t thread_id_main;
 
