@@ -55,10 +55,12 @@ static void thread_background_entry(void *p1, void *p2, void *p3)
 K_THREAD_DEFINE(thread_background, 512, thread_background_entry, NULL, NULL, NULL, -1, K_ESSENTIAL, 1);
 
 static k_tid_t thread_id_main;
+static volatile bool enable_notifier_message = false;
 
 static void notifier_exit(enum pm_state state)
 {
-	printk("Resuming...\n");
+	if (enable_notifier_message)
+		printk("Resuming...\n");
 }
 static struct pm_notifier notifier = { .state_exit = notifier_exit };
 
@@ -72,6 +74,7 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 
 	if (pins & (1 << 2))
 	{
+		enable_notifier_message = true;
 		printk("\033[35mSUSPEND\033[0m\n");
 		task_wdt_suspend();
 		k_thread_suspend(thread_background);
@@ -83,6 +86,7 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 		task_wdt_resume();
 		k_thread_resume(thread_id_main);
 		k_thread_resume(thread_background);
+		enable_notifier_message = false;
 	}
 }
 
