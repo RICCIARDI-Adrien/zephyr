@@ -26,21 +26,6 @@ static void __attribute__((unused)) burn_cpu(void)
 	}
 }
 
-static void watchdog_callback(int channel_id, void *user_data)
-{
-	char *cpu_name;
-#ifdef NRF_RADIOCORE
-	cpu_name = "Radio";
-#else
-	cpu_name = "App";
-#endif
-
-	printk("Task watchdog fired for channel %d on %s core !\n", channel_id, cpu_name);
-
-	// Wait for the hardware watchdog to reset the SoC
-	while (1);
-}
-
 static void thread_background_entry(void *p1, void *p2, void *p3)
 {
 	unsigned int i = 0;

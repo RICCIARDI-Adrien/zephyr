@@ -6,4 +6,6 @@
 
 int watchdog_init(void);
 
+void watchdog_callback(int channel_id, void *user_data);
+
 #endif
