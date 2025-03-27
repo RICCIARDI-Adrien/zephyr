@@ -58,8 +58,51 @@ static void thread_background_entry(void *p1, void *p2, void *p3)
 		k_msleep(1000);
 	}
 }
-// Higher priority thread to be able to interrupt the busy waits in the main thread
+// Higher priority thread to be able to interrupt the busy wait in the main thread
 K_THREAD_DEFINE(thread_background, 512, thread_background_entry, NULL, NULL, NULL, -1, K_ESSENTIAL, 1);
+
+static void thread_semaphore_entry(void *p1, void *p2, void *p3)
+{
+	unsigned int i = 0;
+	int channel, ret;
+	struct k_sem semaphore;
+
+	ARG_UNUSED(p1);
+	ARG_UNUSED(p2);
+	ARG_UNUSED(p3);
+
+	channel = task_wdt_add(2000, watchdog_callback, "semaphore");
+	if (channel < 0)
+	{
+		printk("Failed to initialize the watchdog for semaphore thread (%d)", -channel);
+		return;
+	}
+
+	ret = k_sem_init(&semaphore, 0, 1);
+	if (ret < 0)
+	{
+		printk("Failed to initialize the semaphore (%d).\n", ret);
+		return;
+	}
+
+	printk("Semaphore thread is ready.\n");
+
+	while (1)
+	{
+		printk("SEMAPHORE %u\n", i);
+		i++;
+
+		task_wdt_feed(channel);
+		ret = k_sem_take(&semaphore, K_MSEC(1000));
+		if (ret != -EAGAIN)
+		{
+			printk("Failed to take the semaphore (%d).\n", ret);
+			return;
+		}
+	}
+}
+// Higher priority thread to be able to interrupt the busy wait in the main thread
+K_THREAD_DEFINE(thread_semaphore, 512, thread_semaphore_entry, NULL, NULL, NULL, -1, K_ESSENTIAL, 1);
 
 static void notifier_exit(enum pm_state state)
 {
@@ -91,6 +134,8 @@ static void cache_suspendable_thread_callback(const struct k_thread *thread, voi
 		keep_thread = true;
 	else if (strcmp(name, "thread_background") == 0)
 		keep_thread = true;
+	else if (strcmp(name, "thread_semaphore") == 0)
+		keep_thread = true;
 
 	if (keep_thread)
 	{
@@ -101,6 +146,7 @@ static void cache_suspendable_thread_callback(const struct k_thread *thread, voi
 		}
 		suspendable_thread_ids[suspendable_threads_count] = thread_id;
 		suspendable_threads_count++;
+		printk("Added the thread named \"%s\" to the suspendable list.\n", name);
 	}
 }
 
@@ -115,13 +161,32 @@ static void cache_suspendable_threads()
 
 static void suspend_threads()
 {
-    for (size_t i = 0; i < suspendable_threads_count; i++)
-        k_thread_suspend(suspendable_thread_ids[i]);
+	const char *name;
+	k_tid_t thread_id;
+
+	for (size_t i = 0; i < suspendable_threads_count; i++)
+	{
+		thread_id = suspendable_thread_ids[i];
+		k_thread_suspend(thread_id);
+
+		name = k_thread_name_get(thread_id);
+		printk("Suspending thread named \"%s\".\n", name);
+	}
 }
 
-static void resume_threads() {
-    for (size_t i = 0; i < suspendable_threads_count; i++)
-        k_thread_resume(suspendable_thread_ids[i]);
+static void resume_threads()
+{
+	const char *name;
+	k_tid_t thread_id;
+
+	for (size_t i = 0; i < suspendable_threads_count; i++)
+	{
+		thread_id = suspendable_thread_ids[i];
+		k_thread_resume(thread_id);
+
+		name = k_thread_name_get(thread_id);
+		printk("Resuming thread named \"%s\".\n", name);
+	}
 }
 
 static void gpio_callback(const struct device *port, struct gpio_callback *cb, gpio_port_pins_t pins)
