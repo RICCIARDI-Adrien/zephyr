@@ -206,6 +206,7 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 	{
 		enable_notifier_message = true;
 		printk("\033[35mSUSPEND\033[0m\n");
+		gpio_pin_set_dt(&radio_led, 0); // Make sure the LED is off, so it does not impact power measurements
 		pm_policy_latency_request_remove(&latency_request); // Allow reaching suspend to idle
 		task_wdt_suspend();
 		suspend_threads();
