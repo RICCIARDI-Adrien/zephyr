@@ -1,5 +1,6 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
+#include <zephyr/pm/policy.h>
 #include <zephyr/pm/pm.h>
 #include <zephyr/sys/printk.h>
 
@@ -138,23 +139,29 @@ static void resume_threads()
 
 static void gpio_callback(const struct device *port, struct gpio_callback *cb, gpio_port_pins_t pins)
 {
+	static bool is_suspended = false;
+
 	ARG_UNUSED(port);
 	ARG_UNUSED(cb);
 	ARG_UNUSED(pins);
 
 	printk("\033[35mGPIO interrupt callback.\033[0m\n");
 
-	if (pins & (1 << 8))
+	if (!is_suspended && (pins & (1 << 8)))
 	{
 		printk("\033[35mSUSPEND\033[0m\n");
+		pm_policy_state_lock_put(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES); // Allow reaching suspend to idle
 		task_wdt_suspend();
 		suspend_threads();
+		is_suspended = true;
 	}
-	else if (pins & (1 << 10))
+	else if (is_suspended && (pins & (1 << 10)))
 	{
 		printk("\033[35mRESUME\033[0m\n");
 		task_wdt_resume();
 		resume_threads();
+		pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES); // Stay in active mode
+		is_suspended = false;
 	}
 }
 
@@ -169,6 +176,13 @@ int main(void)
 	 * so they continue working while the main thread is using 100% of the remaining resources.
 	 */
 	k_thread_priority_set(k_current_get(), 12);
+
+	// Force staying in active mode by locking all other states
+	pm_policy_state_lock_get(PM_STATE_RUNTIME_IDLE, PM_ALL_SUBSTATES);
+	pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES);
+	pm_policy_state_lock_get(PM_STATE_STANDBY, PM_ALL_SUBSTATES);
+	pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_RAM, PM_ALL_SUBSTATES);
+	pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_DISK, PM_ALL_SUBSTATES);
 
 	cache_suspendable_threads();
 
@@ -242,9 +256,11 @@ int main(void)
 	while (1)
 	{
 		printk("MAIN %u\n", i);
-                i++;
+		i++;
 
-		// Wait 1 second without sleeping, to make the core consume as much energy as possible
+		/* Wait 1 second without sleeping, so we do not enter any power management state and
+		 * this makes the core consume as much energy as possible.
+		 */
 		do
 		{
 			current_time = k_uptime_get_32();
