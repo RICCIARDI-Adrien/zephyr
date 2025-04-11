@@ -196,13 +196,15 @@ static void resume_threads()
 
 static void gpio_callback(const struct device *port, struct gpio_callback *cb, gpio_port_pins_t pins)
 {
+	static bool is_suspended = false;
+
 	ARG_UNUSED(port);
 	ARG_UNUSED(cb);
 	ARG_UNUSED(pins);
 
 	printk("\033[35mGPIO interrupt callback.\033[0m\n");
 
-	if (pins & (1 << 2))
+	if (!is_suspended && (pins & (1 << 2)))
 	{
 		enable_notifier_message = true;
 		printk("\033[35mSUSPEND\033[0m\n");
@@ -210,14 +212,16 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 		pm_policy_latency_request_remove(&latency_request); // Allow reaching suspend to idle
 		task_wdt_suspend();
 		suspend_threads();
+		is_suspended = true;
 	}
-	else if (pins & (1 << 3))
+	else if (is_suspended && (pins & (1 << 3)))
 	{
 		printk("\033[35mRESUME\033[0m\n");
 		task_wdt_resume();
 		resume_threads();
 		pm_policy_latency_request_add(&latency_request, 1); // Stay in active mode
 		enable_notifier_message = false;
+		is_suspended = false;
 	}
 }
 
@@ -226,6 +230,12 @@ int main(void)
 	int states_count, ret;
 	const struct pm_state_info *states;
 	unsigned int i = 0;
+	uint32_t start_time = 0, current_time;
+
+	/* Set the main thread priority less than the shell and logging threads,
+	 * so they continue working while the main thread is using 100% of the remaining resources.
+	 */
+	k_thread_priority_set(k_current_get(), 12);
 
 	cache_suspendable_threads();
 
@@ -308,8 +318,17 @@ int main(void)
 	{
 		printk("MAIN %u\n", i);
 		i++;
+
+		/* Wait 1 second without sleeping, so we do not enter any power management state and
+		 * this makes the core consume as much energy as possible.
+		 */
+		do
+		{
+			current_time = k_uptime_get_32();
+		} while ((current_time - start_time) < 1000);
+		start_time = current_time;
+
 		gpio_pin_toggle_dt(&radio_led);
-		k_msleep(1000);
 	}
 
 	return 0;
