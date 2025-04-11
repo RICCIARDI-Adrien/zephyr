@@ -1,5 +1,6 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
+#include <zephyr/pm/policy.h>
 #include <zephyr/pm/pm.h>
 #include <zephyr/sys/printk.h>
 
@@ -18,6 +19,8 @@ static volatile bool enable_notifier_message = false;
 
 static size_t suspendable_threads_count;
 static k_tid_t suspendable_thread_ids[MAX_SUSPENDABLE_THREADS_COUNT];
+
+static struct pm_policy_latency_request latency_request;
 
 static void __attribute__((unused)) burn_cpu(void)
 {
@@ -203,6 +206,7 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 	{
 		enable_notifier_message = true;
 		printk("\033[35mSUSPEND\033[0m\n");
+		pm_policy_latency_request_remove(&latency_request); // Allow reaching suspend to idle
 		task_wdt_suspend();
 		suspend_threads();
 	}
@@ -211,6 +215,7 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 		printk("\033[35mRESUME\033[0m\n");
 		task_wdt_resume();
 		resume_threads();
+		pm_policy_latency_request_add(&latency_request, 1); // Stay in active mode
 		enable_notifier_message = false;
 	}
 }
@@ -294,6 +299,9 @@ int main(void)
 		printk("Failed to add a callback to the resume Radio button GPIO.\n");
 		return -1;
 	}
+
+	// Force staying in active mode by specifying a latency that can't be reached by any state
+	pm_policy_latency_request_add(&latency_request, 1);
 
 	while (1)
 	{
