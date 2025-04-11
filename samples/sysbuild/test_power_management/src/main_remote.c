@@ -132,6 +132,8 @@ static void cache_suspendable_thread_callback(const struct k_thread *thread, voi
 		keep_thread = true;
 	else if (strcmp(name, "shell_uart") == 0)
 		keep_thread = true;
+	else if (strcmp(name, "logging") == 0)
+		keep_thread = true;
 	else if (strcmp(name, "thread_background") == 0)
 		keep_thread = true;
 	else if (strcmp(name, "thread_semaphore") == 0)
