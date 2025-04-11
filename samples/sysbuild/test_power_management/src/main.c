@@ -163,6 +163,12 @@ int main(void)
 	int states_count, ret, channel;
 	const struct pm_state_info *states;
 	unsigned int i = 0;
+	uint32_t start_time = 0, current_time;
+
+	/* Set the main thread priority less than the shell and logging threads,
+	 * so they continue working while the main thread is using 100% of the remaining resources.
+	 */
+	k_thread_priority_set(k_current_get(), 12);
 
 	cache_suspendable_threads();
 
@@ -236,9 +242,16 @@ int main(void)
 	while (1)
 	{
 		printk("MAIN %u\n", i);
-		i++;
+                i++;
+
+		// Wait 1 second without sleeping, to make the core consume as much energy as possible
+		do
+		{
+			current_time = k_uptime_get_32();
+		} while ((current_time - start_time) < 1000);
+		start_time = current_time;
+
 		task_wdt_feed(channel);
-		k_msleep(1000);
 	}
 
 	return 0;
