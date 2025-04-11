@@ -5,11 +5,16 @@
 
 #include "watchdog.h"
 
+#define MAX_SUSPENDABLE_THREADS_COUNT 10
+
 static const struct gpio_dt_spec app_button_suspend = GPIO_DT_SPEC_GET(DT_NODELABEL(button0), gpios);
 static const struct gpio_dt_spec app_button_resume = GPIO_DT_SPEC_GET(DT_NODELABEL(button2), gpios);
 
 static struct gpio_callback suspend_app_button_callback_data;
 static struct gpio_callback resume_app_button_callback_data;
+
+static size_t suspendable_threads_count;
+static k_tid_t suspendable_thread_ids[MAX_SUSPENDABLE_THREADS_COUNT];
 
 static void __attribute__((unused)) burn_cpu(void)
 {
@@ -51,8 +56,85 @@ static void thread_background_entry(void *p1, void *p2, void *p3)
 	}
 }
 // Higher priority thread to be able to interrupt the busy waits in the main thread
-K_THREAD_DEFINE(thread_background, 256, thread_background_entry, NULL, NULL, NULL, -1, K_ESSENTIAL, 1);
+K_THREAD_DEFINE(thread_background, 512, thread_background_entry, NULL, NULL, NULL, -1, K_ESSENTIAL, 1);
 
+static void cache_suspendable_thread_callback(const struct k_thread *thread, void *user_data)
+{
+	k_tid_t thread_id;
+	const char *name;
+	bool keep_thread = false;
+
+	ARG_UNUSED(user_data);
+
+	// Retrieve the current thread name
+	thread_id = (k_tid_t) thread;
+	name = k_thread_name_get(thread_id);
+
+	// Do not try to identify the thread if it has no name
+	if (name == NULL)
+		return;
+
+	// The shell thread is always ready and keeps waking the system, so it needs to be suspended
+	if (strcmp(name, "main") == 0)
+		keep_thread = true;
+	else if (strcmp(name, "shell_uart") == 0)
+		keep_thread = true;
+	else if (strcmp(name, "logging") == 0)
+		keep_thread = true;
+	else if (strcmp(name, "thread_background") == 0)
+		keep_thread = true;
+
+	if (keep_thread)
+	{
+		if (suspendable_threads_count >= MAX_SUSPENDABLE_THREADS_COUNT)
+		{
+			printk("No more room in the suspendable threads array.");
+			k_sleep(K_FOREVER);
+		}
+		suspendable_thread_ids[suspendable_threads_count] = thread_id;
+		suspendable_threads_count++;
+		printk("Added the thread named \"%s\" to the suspendable list.\n", name);
+	}
+}
+
+static void cache_suspendable_threads()
+{
+    suspendable_threads_count = 0;
+
+    k_thread_foreach(cache_suspendable_thread_callback, NULL);
+
+    printk("Cached %zu suspendable threads.\n", suspendable_threads_count);
+}
+
+static void suspend_threads()
+{
+	const char *name;
+	k_tid_t thread_id;
+
+	for (size_t i = 0; i < suspendable_threads_count; i++)
+	{
+		thread_id = suspendable_thread_ids[i];
+		k_thread_suspend(thread_id);
+
+		name = k_thread_name_get(thread_id);
+		printk("Suspending thread named \"%s\".\n", name);
+	}
+}
+
+static void resume_threads()
+{
+	const char *name;
+	k_tid_t thread_id;
+
+	for (size_t i = 0; i < suspendable_threads_count; i++)
+	{
+		thread_id = suspendable_thread_ids[i];
+		k_thread_resume(thread_id);
+
+		name = k_thread_name_get(thread_id);
+		printk("Resuming thread named \"%s\".\n", name);
+	}
+}
 
 static void gpio_callback(const struct device *port, struct gpio_callback *cb, gpio_port_pins_t pins)
 {
@@ -65,10 +147,14 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 	if (pins & (1 << 8))
 	{
 		printk("\033[35mSUSPEND\033[0m\n");
+		task_wdt_suspend();
+		suspend_threads();
 	}
 	else if (pins & (1 << 10))
 	{
 		printk("\033[35mRESUME\033[0m\n");
+		task_wdt_resume();
+		resume_threads();
 	}
 }
 
@@ -77,7 +163,8 @@ int main(void)
 	int states_count, ret, channel;
 	const struct pm_state_info *states;
 	unsigned int i = 0;
-	uint32_t start_time = 0, current_time;
+
+	cache_suspendable_threads();
 
 	ret = watchdog_init();
 	if (ret < 0)
@@ -150,15 +237,8 @@ int main(void)
 	{
 		printk("MAIN %u\n", i);
 		i++;
-
-		// Wait 1 second without sleeping, so we do not enter any power management state
-		do
-		{
-			current_time = k_uptime_get_32();
-		} while ((current_time - start_time) < 1000);
-		start_time = current_time;
-
 		task_wdt_feed(channel);
+		k_msleep(1000);
 	}
 
 	return 0;
