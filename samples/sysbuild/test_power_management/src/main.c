@@ -168,19 +168,61 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 
 void power_notifier_entry(enum pm_state state)
 {
+	int ret;
+
 	if (state == PM_STATE_SUSPEND_TO_IDLE)
 	{
+		if (!gpio_is_ready_dt(&app_button_resume))
+		{
+			printk("Resume App button GPIO is not ready.\n");
+			return;
+		}
+		ret = gpio_pin_configure_dt(&app_button_resume, GPIO_INPUT | GPIO_PULL_UP);
+		if (ret < 0)
+		{
+			printk("Failed to configure the resume App button GPIO (%d).\n", ret);
+			return;
+		}
+		ret = gpio_pin_interrupt_configure_dt(&app_button_resume, GPIO_INT_EDGE_FALLING);
+		if (ret < 0)
+		{
+			printk("Failed to configure the resume App button interrupt (%d).\n", ret);
+			return;
+		}
+		gpio_init_callback(&resume_app_button_callback_data, gpio_callback, BIT(app_button_resume.pin));
+		ret = gpio_add_callback_dt(&app_button_resume, &resume_app_button_callback_data);
+		if (ret < 0)
+		{
+			printk("Failed to add a callback to the resume App button GPIO (%d).\n", ret);
+			return;
+		}
+
 		// Tell that the App core is in suspend to idle mode
-		gpio_pin_set_dt(&app_led, 1);
+		gpio_pin_toggle_dt(&app_led);
 	}
 }
 
 void power_notifier_exit(enum pm_state state)
 {
+	int ret;
+
 	if (state == PM_STATE_SUSPEND_TO_IDLE)
 	{
 		// Tell that the App core exited the suspend to idle mode
-		gpio_pin_set_dt(&app_led, 0);
+		//gpio_pin_set_dt(&app_led, 0);
+
+		ret = gpio_pin_interrupt_configure_dt(&app_button_resume, GPIO_INT_DISABLE);
+		if (ret < 0)
+		{
+			printk("Failed to disable the resume App button interrupt (%d).\n", ret);
+			return;
+		}
+		ret = gpio_remove_callback_dt(&app_button_resume, &resume_app_button_callback_data);
+		if (ret < 0)
+		{
+			printk("Failed to remove the callback for the resume App button GPIO (%d).\n", ret);
+			return;
+		}
 	}
 }
 
@@ -229,11 +271,6 @@ int main(void)
 		printk("App LED GPIO is not ready.\n");
 		return -1;
 	}
-	if (!gpio_is_ready_dt(&app_button_resume))
-	{
-		printk("Suspend App button GPIO is not ready.\n");
-		return -1;
-	}
 	if (!gpio_is_ready_dt(&app_button_suspend))
 	{
 		printk("Resume App button GPIO is not ready.\n");
@@ -244,12 +281,6 @@ int main(void)
 	if (ret < 0)
 	{
 		printk("Failed to configure the App LED GPIO (%d).\n", ret);
-		return -1;
-	}
-	ret = gpio_pin_configure_dt(&app_button_resume, GPIO_INPUT | GPIO_PULL_UP);
-	if (ret < 0)
-	{
-		printk("Failed to configure the suspend App button GPIO (%d).\n", ret);
 		return -1;
 	}
 	ret = gpio_pin_configure_dt(&app_button_suspend, GPIO_INPUT | GPIO_PULL_UP);
@@ -265,23 +296,11 @@ int main(void)
 		printk("Failed to configure the suspend App button interrupt (%d).\n", ret);
 		return -1;
 	}
-	ret = gpio_pin_interrupt_configure_dt(&app_button_resume, GPIO_INT_EDGE_FALLING);
-	if (ret < 0)
-	{
-		printk("Failed to configure the resume App button interrupt (%d).\n", ret);
-		return -1;
-	}
 
 	gpio_init_callback(&suspend_app_button_callback_data, gpio_callback, BIT(app_button_suspend.pin));
 	if (gpio_add_callback_dt(&app_button_suspend, &suspend_app_button_callback_data) < 0)
 	{
 		printk("Failed to add a callback to the suspend App button GPIO.\n");
-		return -1;
-	}
-	gpio_init_callback(&resume_app_button_callback_data, gpio_callback, BIT(app_button_resume.pin));
-	if (gpio_add_callback_dt(&app_button_resume, &resume_app_button_callback_data) < 0)
-	{
-		printk("Failed to add a callback to the resume App button GPIO.\n");
 		return -1;
 	}
 
