@@ -8,6 +8,7 @@
 
 #define MAX_SUSPENDABLE_THREADS_COUNT 10
 
+static const struct gpio_dt_spec app_led = GPIO_DT_SPEC_GET(DT_NODELABEL(led0), gpios);
 static const struct gpio_dt_spec app_button_suspend = GPIO_DT_SPEC_GET(DT_NODELABEL(button0), gpios);
 static const struct gpio_dt_spec app_button_resume = GPIO_DT_SPEC_GET(DT_NODELABEL(button2), gpios);
 
@@ -165,6 +166,30 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 	}
 }
 
+void power_notifier_entry(enum pm_state state)
+{
+	if (state == PM_STATE_SUSPEND_TO_IDLE)
+	{
+		// Tell that the App core is in suspend to idle mode
+		gpio_pin_set_dt(&app_led, 1);
+	}
+}
+
+void power_notifier_exit(enum pm_state state)
+{
+	if (state == PM_STATE_SUSPEND_TO_IDLE)
+	{
+		// Tell that the App core exited the suspend to idle mode
+		gpio_pin_set_dt(&app_led, 0);
+	}
+}
+
+static struct pm_notifier power_notifier =
+{
+	.state_entry = power_notifier_entry,
+	.state_exit = power_notifier_exit
+};
+
 int main(void)
 {
 	int states_count, ret, channel;
@@ -186,6 +211,9 @@ int main(void)
 
 	cache_suspendable_threads();
 
+	// Callbacks called when the power mode changes
+	pm_notifier_register(&power_notifier);
+
 	ret = watchdog_init();
 	if (ret < 0)
 		return -1;
@@ -196,6 +224,11 @@ int main(void)
 	states_count = pm_state_cpu_get_all(0, &states);
 	printk("Power states count : %d.\n", states_count);
 
+	if (!gpio_is_ready_dt(&app_led))
+	{
+		printk("App LED GPIO is not ready.\n");
+		return -1;
+	}
 	if (!gpio_is_ready_dt(&app_button_resume))
 	{
 		printk("Suspend App button GPIO is not ready.\n");
@@ -207,6 +240,12 @@ int main(void)
 		return -1;
 	}
 
+	ret = gpio_pin_configure_dt(&app_led, GPIO_OUTPUT_ACTIVE);
+	if (ret < 0)
+	{
+		printk("Failed to configure the App LED GPIO (%d).\n", ret);
+		return -1;
+	}
 	ret = gpio_pin_configure_dt(&app_button_resume, GPIO_INPUT | GPIO_PULL_UP);
 	if (ret < 0)
 	{
@@ -245,6 +284,9 @@ int main(void)
 		printk("Failed to add a callback to the resume App button GPIO.\n");
 		return -1;
 	}
+
+	// Turn the power mode LED off to tell that the board is in active mode
+	gpio_pin_set_dt(&app_led, 0);
 
 	channel = task_wdt_add(2000, watchdog_callback, "main");
 	if (channel < 0)
