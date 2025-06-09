@@ -1,4 +1,5 @@
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/ipc/ipc_service.h>
 #include <zephyr/kernel.h>
 #include <zephyr/pm/policy.h>
 #include <zephyr/pm/pm.h>
@@ -8,6 +9,8 @@
 
 #define MAX_SUSPENDABLE_THREADS_COUNT 10
 
+static void resume_system(void);
+
 static const struct gpio_dt_spec radio_led = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_led), gpios);
 static const struct gpio_dt_spec radio_button_suspend = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_button_suspend), gpios);
 static const struct gpio_dt_spec radio_button_resume = GPIO_DT_SPEC_GET(DT_NODELABEL(radio_button_resume), gpios);
@@ -15,12 +18,38 @@ static const struct gpio_dt_spec radio_button_resume = GPIO_DT_SPEC_GET(DT_NODEL
 static struct gpio_callback suspend_radio_button_callback_data;
 static struct gpio_callback resume_radio_button_callback_data;
 
+static bool is_suspended = false;
 static volatile bool enable_notifier_message = false;
 
 static size_t suspendable_threads_count;
 static k_tid_t suspendable_thread_ids[MAX_SUSPENDABLE_THREADS_COUNT];
 
 static struct pm_policy_latency_request latency_request;
+
+static void ipc_endpoint_bound_callback(void *priv)
+{
+	printk("IPC endpoint successfully bound.\n");
+}
+
+static void ipc_endpoint_received_callback(const void *data, size_t len, void *priv)
+{
+	printk("Received an IPC message\n.");
+
+	if (is_suspended)
+		resume_system();
+}
+
+static struct ipc_ept_cfg ipc_endpoint_config =
+{
+	.name = "ept1",
+	.cb =
+	{
+		.bound = ipc_endpoint_bound_callback,
+		.received = ipc_endpoint_received_callback
+	}
+};
+static struct ipc_ept ipc_endpoint;
+static const struct device *ipc_instance = DEVICE_DT_GET(DT_NODELABEL(ipc0));
 
 static void __attribute__((unused)) burn_cpu(void)
 {
@@ -196,8 +225,6 @@ static void resume_threads()
 
 static void gpio_callback(const struct device *port, struct gpio_callback *cb, gpio_port_pins_t pins)
 {
-	static bool is_suspended = false;
-
 	ARG_UNUSED(port);
 	ARG_UNUSED(cb);
 	ARG_UNUSED(pins);
@@ -217,12 +244,17 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 	else if (is_suspended && (pins & (1 << 3)))
 	{
 		printk("\033[35mRESUME\033[0m\n");
-		task_wdt_resume();
-		resume_threads();
-		pm_policy_latency_request_add(&latency_request, 1); // Stay in active mode
-		enable_notifier_message = false;
-		is_suspended = false;
+		resume_system();
 	}
+}
+
+static void resume_system(void)
+{
+	task_wdt_resume();
+	resume_threads();
+	pm_policy_latency_request_add(&latency_request, 1); // Stay in active mode
+	enable_notifier_message = false;
+	is_suspended = false;
 }
 
 int main(void)
@@ -309,6 +341,20 @@ int main(void)
 	{
 		printk("Failed to add a callback to the resume Radio button GPIO.\n");
 		return -1;
+	}
+
+	ret = ipc_service_open_instance(ipc_instance);
+	if ((ret != 0) && (ret != -EALREADY))
+	{
+		printk("Failed to open the inter processor service instance (%d).", ret);
+		return ret;
+	}
+
+	ret = ipc_service_register_endpoint(ipc_instance, &ipc_endpoint, &ipc_endpoint_config);
+	if (ret != 0)
+	{
+		printk("Failed to register the inter processor service endpoint (%d).", ret);
+		return ret;
 	}
 
 	// Force staying in active mode by specifying a latency that can't be reached by any state

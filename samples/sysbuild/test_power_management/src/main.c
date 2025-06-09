@@ -1,4 +1,5 @@
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/ipc/ipc_service.h>
 #include <zephyr/kernel.h>
 #include <zephyr/pm/policy.h>
 #include <zephyr/pm/pm.h>
@@ -17,6 +18,22 @@ static struct gpio_callback resume_app_button_callback_data;
 
 static size_t suspendable_threads_count;
 static k_tid_t suspendable_thread_ids[MAX_SUSPENDABLE_THREADS_COUNT];
+
+static void ipc_endpoint_bound_callback(void *priv)
+{
+	printk("IPC endpoint successfully bound\n.");
+}
+
+static struct ipc_ept_cfg ipc_endpoint_config =
+{
+	.name = "ept1",
+	.cb =
+	{
+		.bound = ipc_endpoint_bound_callback
+	}
+};
+static struct ipc_ept ipc_endpoint;
+static const struct device *ipc_instance = DEVICE_DT_GET(DT_NODELABEL(ipc0));
 
 static void __attribute__((unused)) burn_cpu(void)
 {
@@ -163,6 +180,9 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 		resume_threads();
 		pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES); // Stay in active mode
 		is_suspended = false;
+
+		// Tell the radio core to wake up (the message content is ignored for now)
+		ipc_service_send(&ipc_endpoint, "wake", 5);
 	}
 }
 
@@ -283,6 +303,20 @@ int main(void)
 	{
 		printk("Failed to add a callback to the resume App button GPIO.\n");
 		return -1;
+	}
+
+	ret = ipc_service_open_instance(ipc_instance);
+	if ((ret != 0) && (ret != -EALREADY))
+	{
+		printk("Failed to open the inter processor service instance (%d).", ret);
+		return ret;
+	}
+
+	ret = ipc_service_register_endpoint(ipc_instance, &ipc_endpoint, &ipc_endpoint_config);
+	if (ret != 0)
+	{
+		printk("Failed to register the inter processor service endpoint (%d).", ret);
+		return ret;
 	}
 
 	// Turn the power mode LED off to tell that the board is in active mode
