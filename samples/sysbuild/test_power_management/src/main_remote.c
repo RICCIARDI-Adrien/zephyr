@@ -245,6 +245,9 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 	{
 		printk("\033[35mRESUME\033[0m\n");
 		resume_system();
+
+		// Tell the app core to wake up (the message content is ignored for now)
+		ipc_service_send(&ipc_endpoint, "wakeFromRad", 12);
 	}
 }
 

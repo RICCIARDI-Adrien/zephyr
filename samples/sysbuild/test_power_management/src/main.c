@@ -9,12 +9,16 @@
 
 #define MAX_SUSPENDABLE_THREADS_COUNT 10
 
+static void resume_system(void);
+
 static const struct gpio_dt_spec app_led = GPIO_DT_SPEC_GET(DT_NODELABEL(led0), gpios);
 static const struct gpio_dt_spec app_button_suspend = GPIO_DT_SPEC_GET(DT_NODELABEL(button0), gpios);
 static const struct gpio_dt_spec app_button_resume = GPIO_DT_SPEC_GET(DT_NODELABEL(button2), gpios);
 
 static struct gpio_callback suspend_app_button_callback_data;
 static struct gpio_callback resume_app_button_callback_data;
+
+static bool is_suspended = false;
 
 static size_t suspendable_threads_count;
 static k_tid_t suspendable_thread_ids[MAX_SUSPENDABLE_THREADS_COUNT];
@@ -24,12 +28,21 @@ static void ipc_endpoint_bound_callback(void *priv)
 	printk("IPC endpoint successfully bound\n.");
 }
 
+static void ipc_endpoint_received_callback(const void *data, size_t len, void *priv)
+{
+	printk("Received an IPC message\n.");
+
+	if (is_suspended)
+		resume_system();
+}
+
 static struct ipc_ept_cfg ipc_endpoint_config =
 {
 	.name = "ept1",
 	.cb =
 	{
-		.bound = ipc_endpoint_bound_callback
+		.bound = ipc_endpoint_bound_callback,
+		.received = ipc_endpoint_received_callback
 	}
 };
 static struct ipc_ept ipc_endpoint;
@@ -157,8 +170,6 @@ static void resume_threads()
 
 static void gpio_callback(const struct device *port, struct gpio_callback *cb, gpio_port_pins_t pins)
 {
-	static bool is_suspended = false;
-
 	ARG_UNUSED(port);
 	ARG_UNUSED(cb);
 	ARG_UNUSED(pins);
@@ -176,14 +187,19 @@ static void gpio_callback(const struct device *port, struct gpio_callback *cb, g
 	else if (is_suspended && (pins & (1 << 10)))
 	{
 		printk("\033[35mRESUME\033[0m\n");
-		task_wdt_resume();
-		resume_threads();
-		pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES); // Stay in active mode
-		is_suspended = false;
+		resume_system();
 
 		// Tell the radio core to wake up (the message content is ignored for now)
 		ipc_service_send(&ipc_endpoint, "wake", 5);
 	}
+}
+
+static void resume_system(void)
+{
+	task_wdt_resume();
+	resume_threads();
+	pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES); // Stay in active mode
+	is_suspended = false;
 }
 
 void power_notifier_entry(enum pm_state state)
