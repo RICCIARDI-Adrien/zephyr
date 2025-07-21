@@ -53,7 +53,15 @@ typedef void (*task_wdt_callback_t)(int channel_id, void *user_data);
  *                install timeout API fails.  See wdt_install_timeout()
  *                API for possible return values.
  */
+#ifdef CONFIG_TASK_WDT
 int task_wdt_init(const struct device *hw_wdt);
+#else
+static inline int task_wdt_init(const struct device *hw_wdt)
+{
+	ARG_UNUSED(hw_wdt);
+	return 0;
+}
+#endif
 
 /**
  * @brief Install new timeout.
@@ -72,8 +80,19 @@ int task_wdt_init(const struct device *hw_wdt);
  * @retval -EINVAL If the reload_period is invalid.
  * @retval -ENOMEM If no more timeouts can be installed.
  */
+#ifdef CONFIG_TASK_WDT
 int task_wdt_add(uint32_t reload_period, task_wdt_callback_t callback,
 		 void *user_data);
+#else
+static inline int task_wdt_add(uint32_t reload_period, task_wdt_callback_t callback,
+		 void *user_data)
+{
+	ARG_UNUSED(reload_period);
+	ARG_UNUSED(callback);
+	ARG_UNUSED(user_data);
+	return 0;
+}
+#endif
 
 /**
  * @brief Delete task watchdog channel.
@@ -86,7 +105,15 @@ int task_wdt_add(uint32_t reload_period, task_wdt_callback_t callback,
  * @retval 0 If successful.
  * @retval -EINVAL If there is no installed timeout for supplied channel.
  */
+#ifdef CONFIG_TASK_WDT
 int task_wdt_delete(int channel_id);
+#else
+static inline int task_wdt_delete(int channel_id)
+{
+	ARG_UNUSED(channel_id);
+	return 0;
+}
+#endif
 
 /**
  * @brief Feed specified watchdog channel.
@@ -100,7 +127,15 @@ int task_wdt_delete(int channel_id);
  * @retval 0 If successful.
  * @retval -EINVAL If there is no installed timeout for supplied channel.
  */
+#ifdef CONFIG_TASK_WDT
 int task_wdt_feed(int channel_id);
+#else
+static inline int task_wdt_feed(int channel_id)
+{
+	ARG_UNUSED(channel_id);
+	return 0;
+}
+#endif
 
 /**
  * @brief Pause all channels before changing system power mode.
@@ -113,7 +148,13 @@ int task_wdt_feed(int channel_id);
  * enable @kconfig{CONFIG_TASK_WDT_HW_FALLBACK_PAUSE_IN_SLEEP} in your
  * configuration.
  */
+#ifdef CONFIG_TASK_WDT
 void task_wdt_suspend(void);
+#else
+static inline void task_wdt_suspend(void)
+{
+}
+#endif
 
 /**
  * @brief Resume all channels execution.
@@ -122,7 +163,13 @@ void task_wdt_suspend(void);
  * watchdog (if enabled) to let enough time to the application to resume
  * feeding the channels by itself.
  */
+#ifdef CONFIG_TASK_WDT
 void task_wdt_resume(void);
+#else
+static inline void task_wdt_resume(void)
+{
+}
+#endif
 
 #ifdef __cplusplus
 }
