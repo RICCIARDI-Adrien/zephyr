@@ -1392,31 +1392,33 @@ static int udc_stm32_clock_enable(const struct device *dev)
 	 * Otherwise, disable ULPI clock in sleep/low-power mode.
 	 * (No need to disable Run mode clock, it is off by default)
 	 */
-	if (UDC_STM32_NODE_PHY_ITFACE(DT_DRV_INST(0)) == PCD_PHY_ULPI) {
+	if (cfg->selected_phy == PCD_PHY_ULPI) {
 		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_USB1OTGHSULPI);
 	} else {
 		LL_AHB1_GRP1_DisableClockSleep(LL_AHB1_GRP1_PERIPH_USB1OTGHSULPI);
 	}
 #elif defined(CONFIG_SOC_SERIES_STM32F7X)
-	/*
-	 * Preprocessor check is required here because
-	 * the OTGPHYC defines are not provided if it
-	 * doesn't exist on SoC.
-	 */
-	#if UDC_STM32_NODE_PHY_ITFACE(DT_DRV_INST(0)) == PCD_PHY_ULPI
+	if (cfg->selected_phy == PCD_PHY_ULPI) {
 		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_OTGHSULPI);
-	#elif UDC_STM32_NODE_PHY_ITFACE(DT_DRV_INST(0)) == PCD_PHY_UTMI
+
 		/*
 		 * For some reason, the ULPI clock still needs to be
 		 * enabled when the internal USBPHYC HS PHY is used.
+		 *
+		 * Preprocessor check is required here because
+		 * the OTGPHYC defines are not provided if it
+		 * doesn't exist on SoC.
 		 */
-		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_OTGHSULPI);
-		LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_OTGPHYC);
-	#endif
+		#ifdef LL_APB2_GRP1_PERIPH_OTGPHYC
+		if (cfg->selected_phy == PCD_PHY_UTMI) {
+			LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_OTGPHYC);
+		}
+		#endif
+	}
 #else /* CONFIG_SOC_SERIES_STM32F2X || CONFIG_SOC_SERIES_STM32F4X */
-	if (UDC_STM32_NODE_PHY_ITFACE(DT_DRV_INST(0)) == PCD_PHY_ULPI) {
+	if (cfg->selected_phy == PCD_PHY_ULPI) {
 		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_OTGHSULPI);
-	} else if (UDC_STM32_NODE_SPEED(DT_DRV_INST(0)) == PCD_SPEED_HIGH_IN_FULL) {
+	} else if (cfg->selected_speed == PCD_SPEED_HIGH_IN_FULL) {
 		/*
 		 * Some parts of the STM32F4 series require the OTGHSULPILPEN to be
 		 * cleared if the OTG_HS is used in FS mode. Disable it on all parts
@@ -1425,7 +1427,7 @@ static int udc_stm32_clock_enable(const struct device *dev)
 		LL_AHB1_GRP1_DisableClockLowPower(LL_AHB1_GRP1_PERIPH_OTGHSULPI);
 	}
 #endif /* CONFIG_SOC_SERIES_* */
-#elif defined(CONFIG_SOC_SERIES_STM32H7X) && DT_HAS_COMPAT_STATUS_OKAY(st_stm32_otgfs)
+#elif defined(CONFIG_SOC_SERIES_STM32H7X) && DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT_OTGFS)
 	/* The USB2 controller only works in FS mode, but the ULPI clock needs
 	 * to be disabled in sleep mode for it to work.
 	 */
