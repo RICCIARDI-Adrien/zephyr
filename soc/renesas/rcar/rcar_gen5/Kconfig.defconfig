@@ -1,0 +1,9 @@
+# Copyright (c) 2025 BayLibre, SAS
+# SPDX-License-Identifier: Apache-2.0
+
+if SOC_SERIES_RCAR_GEN5
+
+config NUM_IRQS
+	default 1216 #960 SPI + 256 LPI TODO
+
+endif # SOC_SERIES_RCAR_GEN5
