@@ -171,8 +171,13 @@ struct can_rcar_cfg {
 	int reg_size;
 	init_func_t init_func;
 	const struct device *clock_dev;
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5 // TODO
+	clock_control_subsys_t mod_clk;
+	clock_control_subsys_t bus_clk;
+#else
 	struct rcar_cpg_clk mod_clk;
 	struct rcar_cpg_clk bus_clk;
+#endif
 	const struct pinctrl_dev_config *pcfg;
 };
 
@@ -1010,6 +1015,8 @@ static int can_rcar_init(const struct device *dev)
 	int ret;
 	uint16_t ctlr;
 
+	printk("[%s:%d] can_rcar_init entry\n", __func__, __LINE__);
+
 	k_mutex_init(&data->inst_mutex);
 	k_mutex_init(&data->rx_mutex);
 	k_sem_init(&data->tx_sem, RCAR_CAN_FIFO_DEPTH, RCAR_CAN_FIFO_DEPTH);
@@ -1025,48 +1032,69 @@ static int can_rcar_init(const struct device *dev)
 
 	if (config->common.phy != NULL && !device_is_ready(config->common.phy)) {
 		LOG_ERR_DEVICE_NOT_READY(config->common.phy);
+		printk("[%s:%d] err\n", __func__, __LINE__);
 		return -ENODEV;
 	}
 
 	if (!device_is_ready(config->clock_dev)) {
 		LOG_ERR_DEVICE_NOT_READY(config->clock_dev);
+		printk("[%s:%d] err\n", __func__, __LINE__);
 		return -ENODEV;
 	}
 
 	/* Configure dt provided device signals when available */
 	ret = pinctrl_apply_state(config->pcfg, PINCTRL_STATE_DEFAULT);
 	if (ret < 0) {
+		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
 		return ret;
 	}
 
 	/* reset the registers */
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5 // TODO
+	printk("[%s:%d] config->clock_dev=%p, config->mod_clk=%p\n", __func__, __LINE__, config->clock_dev, config->mod_clk);
+	ret = clock_control_off(config->clock_dev, config->mod_clk);
+#else
 	ret = clock_control_off(config->clock_dev,
 				(clock_control_subsys_t)&config->mod_clk);
+#endif
 	if (ret < 0) {
+		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
 		return ret;
 	}
 
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5 // TODO
+	ret = clock_control_on(config->clock_dev, config->mod_clk);
+#else
 	ret = clock_control_on(config->clock_dev,
 			       (clock_control_subsys_t)&config->mod_clk);
+#endif
 	if (ret < 0) {
+		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
 		return ret;
 	}
 
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5 // TODO
+	ret = clock_control_on(config->clock_dev, config->bus_clk);
+#else
 	ret = clock_control_on(config->clock_dev,
 			       (clock_control_subsys_t)&config->bus_clk);
+#endif
 	if (ret < 0) {
+		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
 		return ret;
 	}
 
 	ret = can_rcar_enter_reset_mode(config, false);
 	__ASSERT(!ret, "Fail to set CAN controller to reset mode");
 	if (ret) {
+		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
 		return ret;
 	}
 
 	ret = can_rcar_leave_sleep_mode(config);
 	__ASSERT(!ret, "Fail to leave CAN controller from sleep mode");
 	if (ret) {
+		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
 		return ret;
 	}
 
@@ -1074,6 +1102,7 @@ static int can_rcar_init(const struct device *dev)
 			      config->common.sample_point);
 	if (ret == -EINVAL) {
 		LOG_ERR("Can't find timing for given param");
+		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, -EIO);
 		return -EIO;
 	}
 
@@ -1083,11 +1112,13 @@ static int can_rcar_init(const struct device *dev)
 
 	ret = can_set_timing(dev, &timing);
 	if (ret) {
+		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
 		return ret;
 	}
 
 	ret = can_rcar_set_mode(dev, CAN_MODE_NORMAL);
 	if (ret) {
+		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
 		return ret;
 	}
 
@@ -1127,6 +1158,8 @@ static int can_rcar_init(const struct device *dev)
 
 	config->init_func(dev);
 
+	printk("[%s:%d] fin OK\n", __func__, __LINE__);
+
 	return 0;
 }
 
@@ -1134,8 +1167,12 @@ static int can_rcar_get_core_clock(const struct device *dev, uint32_t *rate)
 {
 	const struct can_rcar_cfg *config = dev->config;
 
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5 // TODO
+	return clock_control_get_rate(dev, config->bus_clk, rate);
+#else
 	*rate = config->bus_clk.rate;
 	return 0;
+#endif
 }
 
 static int can_rcar_get_max_filters(const struct device *dev, bool ide)
@@ -1178,6 +1215,18 @@ static DEVICE_API(can, can_rcar_driver_api) = {
 };
 
 /* Device Instantiation */
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5 // TODO
+#define CAN_RCAR_INIT_CLOCKS(n) \
+	.mod_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 0, name), \
+	.bus_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 1, name)
+#else
+#define CAN_RCAR_INIT_CLOCKS(n)					\
+	.mod_clk.module = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, module),	\
+	.mod_clk.domain = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, domain),	\
+	.bus_clk.module = DT_INST_CLOCKS_CELL_BY_IDX(n, 1, module),	\
+	.bus_clk.domain = DT_INST_CLOCKS_CELL_BY_IDX(n, 1, domain)
+#endif
+
 #define CAN_RCAR_INIT(n)							\
 	PINCTRL_DT_INST_DEFINE(n);						\
 	static void can_rcar_##n##_init(const struct device *dev);		\
@@ -1186,16 +1235,9 @@ static DEVICE_API(can, can_rcar_driver_api) = {
 		.reg_addr = DT_INST_REG_ADDR(n),				\
 		.reg_size = DT_INST_REG_SIZE(n),				\
 		.init_func = can_rcar_##n##_init,				\
+		CAN_RCAR_INIT_CLOCKS(n), 						\
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),		\
-		.mod_clk.module =						\
-			DT_INST_CLOCKS_CELL_BY_IDX(n, 0, module),		\
-		.mod_clk.domain =						\
-			DT_INST_CLOCKS_CELL_BY_IDX(n, 0, domain),		\
-		.bus_clk.module =						\
-			DT_INST_CLOCKS_CELL_BY_IDX(n, 1, module),		\
-		.bus_clk.domain =						\
-			DT_INST_CLOCKS_CELL_BY_IDX(n, 1, domain),		\
-		.bus_clk.rate = 40000000,					\
+		/*.bus_clk.rate = 40000000, TODO */					\
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n),			\
 	};									\
 	static struct can_rcar_data can_rcar_data_##n;				\
