@@ -13,3 +13,6 @@ CONFIG_UART_CONSOLE=y
 
 # GPIO-related configurations
 CONFIG_GPIO=y
+
+# CAN-related configurations
+CONFIG_CAN=y
