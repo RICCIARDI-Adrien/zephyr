@@ -24,9 +24,11 @@ static int scmi_clock_on_off(const struct device *dev,
 	uint32_t clk_id;
 	struct scmi_clock_config cfg;
 
+
 	proto = dev->data;
 	data = proto->data;
 	clk_id = POINTER_TO_UINT(clk);
+	printk("[%s:%s:%d] entry dev=%s, clkid=%u\n", __FILE__, __func__, __LINE__, dev->name, clk_id);
 
 	if (clk_id >= data->clk_num) {
 		return -EINVAL;
