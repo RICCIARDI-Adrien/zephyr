@@ -7,6 +7,14 @@
 #include <zephyr/dt-bindings/pinctrl/renesas/pinctrl-r8a78000.h>
 
 &pfc {
+	can0_rx_default: can0_rx_default {
+		pin = <PIN_CAN0RX_INTP0 FUNC_CAN0RX_INTP0>;
+	};
+
+	can0_tx_default: can0_tx_default {
+		pin = <PIN_CAN0TX FUNC_CAN0TX>;
+	};
+
 	hscif1_data_tx_default: hscif1_data_tx_default {
 		pin = <PIN_HTX1 FUNC_HTX1>;
 	};

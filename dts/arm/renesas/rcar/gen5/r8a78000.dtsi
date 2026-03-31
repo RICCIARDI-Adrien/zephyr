@@ -231,5 +231,14 @@
 			interrupts = <GIC_SPI 580 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 			clocks = <&scmi_clk R8A78000_CLK_I2C8>;
 		};
+
+		can0: can@c1420000 {
+			interrupts = <GIC_SPI 831 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			clocks = <&scmi_clk R8A78000_CLK_CANFD0>,
+				 <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>;
+			// TEST avec 1 seule clock
+			interrupt-parent = <&gic>;
+			status = "disabled";
+		};
 	};
 };

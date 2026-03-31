@@ -241,6 +241,8 @@ int scmi_clock_config_set(struct scmi_protocol *proto,
 		return -EINVAL;
 	}
 
+	printk("[%s:%s:%d] cfg->attributes=0x%08X\n", __FILE__, __func__, __LINE__, cfg->attributes);
+
 	msg.hdr = SCMI_MESSAGE_HDR_MAKE(CLOCK_CONFIG_SET,
 					SCMI_COMMAND, proto->id, 0x0);
 	msg.len = sizeof(*cfg);
@@ -251,6 +253,7 @@ int scmi_clock_config_set(struct scmi_protocol *proto,
 	reply.content = &status;
 
 	ret = scmi_send_message(proto, &msg, &reply, false);
+	printk("[%s:%s:%d] ret=%d\n", __FILE__, __func__, __LINE__, ret);
 	if (ret < 0) {
 		return ret;
 	}
