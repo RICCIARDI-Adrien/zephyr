@@ -28,6 +28,17 @@ LOG_MODULE_REGISTER(can_rcar, CONFIG_CAN_LOG_LEVEL);
 // TODO
 //#ifdef CONFIG_SOC_SERIES_RCAR_GEN5
 
+/* Channel 0 Control Register */
+#define RCAR_CAN_CFDC0CTR 0x0004
+/* Channel 0 Control Register bits */
+#define RCAR_CAN_CFDC0CTR_CHMDC_MASK 0x03
+#define RCAR_CAN_CFDC0CTR_CHMDC_CHANNEL_RESET_REQUEST 0x01
+
+/* Channel 0 Status Register */
+#define RCAR_CAN_CFDC0STS 0x0008
+/* Channel 0 Status Register bits */
+#define RCAR_CAN_CFDC0STS_CSLPSTS BIT(0)
+
 /* Global Control Register */
 #define RCAR_CAN_CFDGCTR 0x0088
 /* Global Control Register bits */
@@ -518,6 +529,23 @@ static void can_rcar_isr(const struct device *dev)
 
 static int can_rcar_leave_sleep_mode(const struct can_rcar_cfg *config)
 {
+#if RCAR_CAN_VERSION_RSCANFD
+	/*
+	 * Release the channel 0 from sleep mode, resetting all other fields in the same time.
+	 * Note that other channels are ignored for now).
+	 */
+	printk("[%s:%d] entry RCAR_CAN_CFDC0CTR avant = 0x%08X\n", __func__, __LINE__, can_rcar_read32(config, RCAR_CAN_CFDC0CTR));
+	sys_write32(RCAR_CAN_CFDC0CTR_CHMDC_CHANNEL_RESET_REQUEST, config->reg_addr + RCAR_CAN_CFDC0CTR);
+
+	/* Wait for the controller to apply the new state */
+	for (int i = 0; i < MAX_STR_READS; i++) {
+		if (sys_read32(config->reg_addr + RCAR_CAN_CFDC0STS) & RCAR_CAN_CFDC0STS_CSLPSTS) {
+			printk("[%s:%d] RCAR_CAN_CFDC0CTR OK\n", __func__, __LINE__);
+			return 0;
+		}
+	}
+
+#else
 	uint16_t ctlr, str;
 
 	ctlr = can_rcar_read16(config, RCAR_CAN_CTLR);
@@ -529,6 +557,8 @@ static int can_rcar_leave_sleep_mode(const struct can_rcar_cfg *config)
 			return 0;
 		}
 	}
+#endif
+
 	return -EAGAIN;
 }
 
