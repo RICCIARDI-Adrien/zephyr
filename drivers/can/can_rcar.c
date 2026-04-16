@@ -18,6 +18,31 @@
 
 LOG_MODULE_REGISTER(can_rcar, CONFIG_CAN_LOG_LEVEL);
 
+// TODO
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5
+#define RCAR_CAN_VERSION_RSCANFD 1
+#else
+#define RCAR_CAN_VERSION_RSCANFD 0
+#endif
+
+// TODO
+//#ifdef CONFIG_SOC_SERIES_RCAR_GEN5
+
+/* Global Control Register */
+#define RCAR_CAN_CFDGCTR 0x0088
+/* Global Control Register bits */
+#define RCAR_CAN_CFDGCTR_GMDC_MASK 0x03
+#define RCAR_CAN_CFDGCTR_GMDC_GLOBAL_OPERATION_MODE_REQUEST 0x00
+#define RCAR_CAN_CFDGCTR_GMDC_GLOBAL_RESET_MODE_REQUEST 0x01
+
+/* Global Status Register */
+#define RCAR_CAN_CFDGSTS 0x008C
+/* Global Status Register bits */
+#define RCAR_CAN_CFDGSTS_GRSTSTS BIT(0)
+
+/* Gen 3 / Gen 4 boards */
+//#else
+
 /* Control Register */
 #define RCAR_CAN_CTLR             0x0840
 /* Control Register bits */
@@ -201,6 +226,20 @@ struct can_rcar_data {
 	enum can_state state;
 };
 
+// TODO
+//#if RCAR_CAN_VERSION_RSCANFD
+static inline uint32_t can_rcar_read32(const struct can_rcar_cfg *config,
+				       uint32_t offs)
+{
+	return sys_read32(config->reg_addr + offs);
+}
+
+static inline void can_rcar_write32(const struct can_rcar_cfg *config,
+				    uint32_t offs, uint32_t value)
+{
+	sys_write32(value, config->reg_addr + offs);
+}
+//#else
 static inline uint16_t can_rcar_read16(const struct can_rcar_cfg *config,
 				       uint32_t offs)
 {
@@ -212,6 +251,7 @@ static inline void can_rcar_write16(const struct can_rcar_cfg *config,
 {
 	sys_write16(value, config->reg_addr + offs);
 }
+//#endif /* RCAR_CAN_VERSION_RSCANFD */
 
 static void can_rcar_tx_done(const struct device *dev, uint8_t err)
 {
@@ -494,6 +534,21 @@ static int can_rcar_leave_sleep_mode(const struct can_rcar_cfg *config)
 
 static int can_rcar_enter_reset_mode(const struct can_rcar_cfg *config, bool force)
 {
+#if RCAR_CAN_VERSION_RSCANFD
+	ARG_UNUSED(force);
+
+	printk("[%s:%d] entry RCAR_CAN_CFDGCTR avant = 0x%08X\n", __func__, __LINE__, can_rcar_read32(config, RCAR_CAN_CFDGCTR));
+	/* Request the global reset mode, resetting all other fields in the same time */
+	sys_write32(RCAR_CAN_CFDGCTR_GMDC_GLOBAL_RESET_MODE_REQUEST, config->reg_addr + RCAR_CAN_CFDGCTR);
+
+	/* Wait for the controller to apply the new state */
+	for (int i = 0; i < MAX_STR_READS; i++) {
+		if (sys_read32(config->reg_addr + RCAR_CAN_CFDGSTS) & RCAR_CAN_CFDGSTS_GRSTSTS) {
+			printk("[%s:%d] RCAR_CAN_CFDGCTR OK\n", __func__, __LINE__);
+			return 0;
+		}
+	}
+#else
 	uint16_t ctlr;
 
 	ctlr = can_rcar_read16(config, RCAR_CAN_CTLR);
@@ -508,6 +563,8 @@ static int can_rcar_enter_reset_mode(const struct can_rcar_cfg *config, bool for
 			return 0;
 		}
 	}
+#endif
+
 	return -EAGAIN;
 }
 
