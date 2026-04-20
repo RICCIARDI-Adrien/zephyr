@@ -28,6 +28,20 @@ LOG_MODULE_REGISTER(can_rcar, CONFIG_CAN_LOG_LEVEL);
 // TODO
 //#ifdef CONFIG_SOC_SERIES_RCAR_GEN5
 
+// TODO faire "enum" par canal ?
+
+/* Channel 0 Nominal Bitrate Configuration Register */
+#define RCAR_CAN_CFDC0NCFG 0x0000
+/* Channel 0 Nominal Bitrate Configuration Register bits */
+#define RCAR_CAN_CFDC0NCFG_NBRP_MASK 0x3FF
+#define RCAR_CAN_CFDC0NCFG_NBRP_SHIFT 0
+#define RCAR_CAN_CFDC0NCFG_NSJW_MASK 0x07F
+#define RCAR_CAN_CFDC0NCFG_NSJW_SHIFT 10
+#define RCAR_CAN_CFDC0NCFG_NTSEG1_MASK 0xFF
+#define RCAR_CAN_CFDC0NCFG_NTSEG1_SHIFT 17
+#define RCAR_CAN_CFDC0NCFG_NTSEG2_MASK 0xFF
+#define RCAR_CAN_CFDC0NCFG_NTSEG2_SHIFT 25
+
 /* Channel 0 Control Register */
 #define RCAR_CAN_CFDC0CTR 0x0004
 /* Channel 0 Control Register bits */
@@ -812,6 +826,18 @@ unlock:
 static void can_rcar_set_bittiming(const struct can_rcar_cfg *config,
 				   const struct can_timing *timing)
 {
+#if CONFIG_SOC_SERIES_RCAR_GEN5
+	uint32_t cfg;
+
+	printk("[%s:%d] entry\n", __func__, __LINE__);
+
+	cfg = (FIELD_PREP(RCAR_CAN_CFDC0NCFG_NBRP_MASK, timing->prescaler) << RCAR_CAN_CFDC0NCFG_NBRP_SHIFT) |
+		(FIELD_PREP(RCAR_CAN_CFDC0NCFG_NSJW_MASK, timing->sjw) << RCAR_CAN_CFDC0NCFG_NSJW_SHIFT) |
+		(FIELD_PREP(RCAR_CAN_CFDC0NCFG_NTSEG1_MASK, timing->phase_seg1) << RCAR_CAN_CFDC0NCFG_NTSEG1_SHIFT) |
+		(FIELD_PREP(RCAR_CAN_CFDC0NCFG_NTSEG2_MASK, timing->phase_seg2) << RCAR_CAN_CFDC0NCFG_NTSEG2_SHIFT);
+
+	sys_write32(cfg, config->reg_addr + RCAR_CAN_CFDC0NCFG);
+#else
 	uint32_t bcr;
 
 	bcr = RCAR_CAN_BCR_TSEG1(timing->phase_seg1 + timing->prop_seg - 1) |
@@ -825,6 +851,7 @@ static void can_rcar_set_bittiming(const struct can_rcar_cfg *config,
 	 */
 	sys_write32((bcr << 8) | RCAR_CAN_CLKR_CLKP2,
 		    config->reg_addr + RCAR_CAN_BCR);
+#endif
 }
 
 static int can_rcar_set_timing(const struct device *dev,
@@ -839,10 +866,13 @@ static int can_rcar_set_timing(const struct device *dev,
 		uint8_t value;
 	};
 
-	struct reg_backup regs[3] = { { RCAR_CAN_TCR, 0 }, { RCAR_CAN_TFCR, 0 }
-				      , { RCAR_CAN_RFCR, 0 } };
+	/*struct reg_backup regs[3] = { { RCAR_CAN_TCR, 0 }, { RCAR_CAN_TFCR, 0 }
+				      , { RCAR_CAN_RFCR, 0 } };*/
+
+	printk("[%s:%d] entry\n", __func__, __LINE__);
 
 	if (data->common.started) {
+		printk("[%s:%d] BUSY started\n", __func__, __LINE__);
 		return -EBUSY;
 	}
 
@@ -853,9 +883,9 @@ static int can_rcar_set_timing(const struct device *dev,
 	 * transmit and receive FIFOs (TFCR and RFCR).
 	 * Storing these reg values to restore them once back in halt mode.
 	 */
-	for (int i = 0; i < 3; i++) {
+	/*for (int i = 0; i < 3; i++) {
 		regs[i].value = sys_read8(config->reg_addr + regs[i].address);
-	}
+	}*/
 
 	/* Switching to reset mode */
 	ret = can_rcar_enter_reset_mode(config, true);
@@ -873,9 +903,9 @@ static int can_rcar_set_timing(const struct device *dev,
 	}
 
 	/* Restoring registers */
-	for (int i = 0; i < 3; i++) {
+	/*for (int i = 0; i < 3; i++) {
 		sys_write8(regs[i].value, config->reg_addr + regs[i].address);
-	}
+	}*/
 
 unlock:
 	k_mutex_unlock(&data->inst_mutex);
@@ -1185,6 +1215,7 @@ static int can_rcar_init(const struct device *dev)
 		return ret;
 	}
 
+	printk("[%s:%d] config->common.bitrate=%u, config->common.sample_point=%u\n", __func__, __LINE__, config->common.bitrate, config->common.sample_point);
 	ret = can_calc_timing(dev, &timing, config->common.bitrate,
 			      config->common.sample_point);
 	if (ret == -EINVAL) {
@@ -1255,7 +1286,8 @@ static int can_rcar_get_core_clock(const struct device *dev, uint32_t *rate)
 	const struct can_rcar_cfg *config = dev->config;
 
 #ifdef CONFIG_SOC_SERIES_RCAR_GEN5 // TODO
-	return clock_control_get_rate(dev, config->bus_clk, rate);
+	printk("[%s:%d] config->bus_clk=%p\n", __func__, __LINE__, config->bus_clk);
+	return clock_control_get_rate(config->clock_dev, config->bus_clk, rate);
 #else
 	*rate = config->bus_clk.rate;
 	return 0;
