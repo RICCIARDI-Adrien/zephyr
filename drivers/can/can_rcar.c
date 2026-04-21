@@ -46,17 +46,21 @@ LOG_MODULE_REGISTER(can_rcar, CONFIG_CAN_LOG_LEVEL);
 #define RCAR_CAN_CFDC0CTR 0x0004
 /* Channel 0 Control Register bits */
 #define RCAR_CAN_CFDC0CTR_CHMDC_MASK 0x03
+#define RCAR_CAN_CFDC0CTR_CHMDC_SHIFT 0
+#define RCAR_CAN_CFDC0CTR_CHMDC_CHANNEL_OPERATION_REQUEST 0
 #define RCAR_CAN_CFDC0CTR_CHMDC_CHANNEL_RESET_REQUEST 0x01
 
 /* Channel 0 Status Register */
 #define RCAR_CAN_CFDC0STS 0x0008
 /* Channel 0 Status Register bits */
-#define RCAR_CAN_CFDC0STS_CSLPSTS BIT(0)
+#define RCAR_CAN_CFDC0STS_CSLPSTS BIT(2)
+#define RCAR_CAN_CFDC0STS_CRSTSTS BIT(0)
 
 /* Global Control Register */
 #define RCAR_CAN_CFDGCTR 0x0088
 /* Global Control Register bits */
 #define RCAR_CAN_CFDGCTR_GMDC_MASK 0x03
+#define RCAR_CAN_CFDGCTR_GMDC_SHIFT 0
 #define RCAR_CAN_CFDGCTR_GMDC_GLOBAL_OPERATION_MODE_REQUEST 0x00
 #define RCAR_CAN_CFDGCTR_GMDC_GLOBAL_RESET_MODE_REQUEST 0x01
 
@@ -98,6 +102,7 @@ LOG_MODULE_REGISTER(can_rcar, CONFIG_CAN_LOG_LEVEL);
 #define RCAR_CAN_CFDCFCC0_CFM_TX 0x01
 #define RCAR_CAN_CFDCFCC0_CFPLS_SHIFT 4
 #define RCAR_CAN_CFDCFCC0_CFPLS_SIZE_64 0x07
+#define RCAR_CAN_CFDCFCC0_CFE_MASK 0x01
 #define RCAR_CAN_CFDCFCC0_CFE_SHIFT 0
 #define RCAR_CAN_CFDCFCC0_CFE_ENABLE 1
 
@@ -597,15 +602,18 @@ static int can_rcar_leave_sleep_mode(const struct can_rcar_cfg *config)
 	 * Note that other channels are ignored for now).
 	 */
 	printk("[%s:%d] entry RCAR_CAN_CFDC0CTR avant = 0x%08X\n", __func__, __LINE__, can_rcar_read32(config, RCAR_CAN_CFDC0CTR));
-	sys_write32(RCAR_CAN_CFDC0CTR_CHMDC_CHANNEL_RESET_REQUEST, config->reg_addr + RCAR_CAN_CFDC0CTR);
+	printk("[%s:%d] entry RCAR_CAN_CFDC0STS avant = 0x%08X\n", __func__, __LINE__, can_rcar_read32(config, RCAR_CAN_CFDC0STS));
+	sys_write32(RCAR_CAN_CFDC0CTR_CHMDC_CHANNEL_RESET_REQUEST << RCAR_CAN_CFDC0CTR_CHMDC_SHIFT,
+		    config->reg_addr + RCAR_CAN_CFDC0CTR);
 
 	/* Wait for the controller to apply the new state */
 	for (int i = 0; i < MAX_STR_READS; i++) {
-		if (sys_read32(config->reg_addr + RCAR_CAN_CFDC0STS) & RCAR_CAN_CFDC0STS_CSLPSTS) {
+		if (!(sys_read32(config->reg_addr + RCAR_CAN_CFDC0STS) & RCAR_CAN_CFDC0STS_CSLPSTS)) {
 			printk("[%s:%d] RCAR_CAN_CFDC0CTR OK\n", __func__, __LINE__);
 			return 0;
 		}
 	}
+	printk("[%s:%d] entry RCAR_CAN_CFDC0STS apres = 0x%08X\n", __func__, __LINE__, can_rcar_read32(config, RCAR_CAN_CFDC0STS));
 
 #else
 	uint16_t ctlr, str;
@@ -688,6 +696,45 @@ static int can_rcar_enter_halt_mode(const struct can_rcar_cfg *config)
 
 static int can_rcar_enter_operation_mode(const struct can_rcar_cfg *config)
 {
+#if CONFIG_SOC_SERIES_RCAR_GEN5
+	uint32_t val, i;
+
+	/* Switch the module to global operation mode */
+	val = sys_read32(config->reg_addr + RCAR_CAN_CFDGCTR);
+	val &= ~(RCAR_CAN_CFDGCTR_GMDC_MASK << RCAR_CAN_CFDGCTR_GMDC_SHIFT);
+	val |= RCAR_CAN_CFDGCTR_GMDC_GLOBAL_OPERATION_MODE_REQUEST << RCAR_CAN_CFDGCTR_GMDC_SHIFT;
+	sys_write32(val, config->reg_addr + RCAR_CAN_CFDGCTR);
+
+	/* Switch the channel 0 to operation mode */
+	val = sys_read32(config->reg_addr + RCAR_CAN_CFDC0CTR);
+	val &= ~(RCAR_CAN_CFDC0CTR_CHMDC_MASK << RCAR_CAN_CFDC0CTR_CHMDC_SHIFT);
+	val |= RCAR_CAN_CFDC0CTR_CHMDC_CHANNEL_OPERATION_REQUEST << RCAR_CAN_CFDC0CTR_CHMDC_SHIFT;
+	sys_write32(val, config->reg_addr + RCAR_CAN_CFDC0CTR);
+
+	/* Wait for the controller to apply the new state */
+	for (i = 0; i < MAX_STR_READS; i++) {
+		if (sys_read32(config->reg_addr + RCAR_CAN_CFDC0STS) & RCAR_CAN_CFDC0STS_CRSTSTS) {
+			printk("[%s:%d] RCAR_CAN_CFDC0STS OK\n", __func__, __LINE__);
+			break;
+		}
+	}
+	if (i == MAX_STR_READS) {
+		printk("[%s:%d] RCAR_CAN_CFDC0STS err\n", __func__, __LINE__);
+		return -EAGAIN;
+	}
+
+	/* Enable the reception FIFO */
+	val = sys_read32(config->reg_addr + RCAR_CAN_CFDRFCC0);
+	val &= ~(RCAR_CAN_CFDRFCC0_RFE_MASK << RCAR_CAN_CFDRFCC0_RFE_SHIFT);
+	val |= RCAR_CAN_CFDRFCC0_RFE_ENABLE << RCAR_CAN_CFDRFCC0_RFE_SHIFT;
+	sys_write32(val, config->reg_addr + RCAR_CAN_CFDRFCC0);
+
+	/* Enable the transmission FIFO */
+	val = sys_read32(config->reg_addr + RCAR_CAN_CFDCFCC0);
+	val &= ~(RCAR_CAN_CFDCFCC0_CFE_MASK << RCAR_CAN_CFDCFCC0_CFE_SHIFT);
+	val |= RCAR_CAN_CFDCFCC0_CFE_ENABLE << RCAR_CAN_CFDCFCC0_CFE_SHIFT;
+	sys_write32(val, config->reg_addr + RCAR_CAN_CFDCFCC0);
+#else
 	uint16_t ctlr, str;
 	int i;
 
@@ -712,7 +759,7 @@ static int can_rcar_enter_operation_mode(const struct can_rcar_cfg *config)
 	/* Enable Rx and Tx FIFO */
 	sys_write8(RCAR_CAN_RFCR_RFE, config->reg_addr + RCAR_CAN_RFCR);
 	sys_write8(RCAR_CAN_TFCR_TFE, config->reg_addr + RCAR_CAN_TFCR);
-
+#endif
 	return 0;
 }
 
@@ -730,6 +777,8 @@ static int can_rcar_start(const struct device *dev)
 	const struct can_rcar_cfg *config = dev->config;
 	struct can_rcar_data *data = dev->data;
 	int ret;
+
+	printk("[%s:%d] entry\n", __func__, __LINE__);
 
 	if (data->common.started) {
 		return -EALREADY;
@@ -814,6 +863,7 @@ static int can_rcar_set_mode(const struct device *dev, can_mode_t mode)
 	struct can_rcar_data *data = dev->data;
 	uint8_t tcr = 0;
 	int ret = 0;
+	uint32_t val;
 
 	if (IS_ENABLED(CONFIG_CAN_MANUAL_RECOVERY_MODE)) {
 		supported |= CAN_MODE_MANUAL_RECOVERY;
@@ -833,6 +883,28 @@ static int can_rcar_set_mode(const struct device *dev, can_mode_t mode)
 
 	k_mutex_lock(&data->inst_mutex, K_FOREVER);
 
+#if CONFIG_SOC_SERIES_RCAR_GEN5
+	// TEST
+	if ((mode & (CAN_MODE_LOOPBACK | CAN_MODE_LISTENONLY)) ==
+	    (CAN_MODE_LOOPBACK | CAN_MODE_LISTENONLY)) {
+		// TODO vérif si toujours le cas
+		LOG_ERR("Combination of loopback and listenonly modes not supported");
+		ret = -ENOTSUP;
+		goto unlock;
+	} else if ((mode & CAN_MODE_LOOPBACK) != 0) {
+		// TODO
+		LOG_ERR("TODO pas supporte (voir CFDCnCTR CTMS)");
+		ret = -1000;
+		goto unlock;
+	} else if ((mode & CAN_MODE_LISTENONLY) != 0) {
+		// TODO
+		LOG_ERR("TODO pas supporte (voir CFDCnCTR CTMS)");
+		ret = -1000;
+		goto unlock;
+	} else {
+		LOG_ERR("TODO");
+	}
+#else
 	if ((mode & (CAN_MODE_LOOPBACK | CAN_MODE_LISTENONLY)) ==
 	    (CAN_MODE_LOOPBACK | CAN_MODE_LISTENONLY)) {
 		LOG_ERR("Combination of loopback and listenonly modes not supported");
@@ -864,6 +936,7 @@ static int can_rcar_set_mode(const struct device *dev, can_mode_t mode)
 
 		can_rcar_write16(config, RCAR_CAN_CTLR, ctlr);
 	}
+#endif
 
 	data->common.mode = mode;
 
@@ -1052,6 +1125,8 @@ static int can_rcar_send(const struct device *dev, const struct can_frame *frame
 	struct can_rcar_tx_cb *tx_cb;
 	uint32_t identifier;
 	int i;
+
+	printk("[%s:%d] entry\n", __func__, __LINE__);
 
 	LOG_DBG("Sending %d bytes on %s. "
 		"Id: 0x%x, "
@@ -1318,8 +1393,8 @@ static int can_rcar_init(const struct device *dev)
 		(FIELD_PREP(RCAR_CAN_CFDRFCC0_RFPLS_MASK, RCAR_CAN_CFDRFCC0_RFPLS_SIZE_64) << RCAR_CAN_CFDRFCC0_RFPLS_SHIFT) |
 		(FIELD_PREP(RCAR_CAN_CFDRFCC0_RFE_MASK, RCAR_CAN_CFDRFCC0_RFE_ENABLE) << RCAR_CAN_CFDRFCC0_RFE_SHIFT),*/
 		(RCAR_CAN_CFDRFCC0_RFDC_DEPTH_128 << RCAR_CAN_CFDRFCC0_RFDC_SHIFT) |
-		(RCAR_CAN_CFDRFCC0_RFPLS_SIZE_64 << RCAR_CAN_CFDRFCC0_RFPLS_SHIFT) |
-		(RCAR_CAN_CFDRFCC0_RFE_ENABLE << RCAR_CAN_CFDRFCC0_RFE_SHIFT),
+		(RCAR_CAN_CFDRFCC0_RFPLS_SIZE_64 << RCAR_CAN_CFDRFCC0_RFPLS_SHIFT)/* |*/
+		/*(RCAR_CAN_CFDRFCC0_RFE_ENABLE << RCAR_CAN_CFDRFCC0_RFE_SHIFT)*/,
 		config->reg_addr + RCAR_CAN_CFDRFCC0);
 
 	/* Configure a common FIFO for transmission, with a depth of 128 messages and 64 bytes per message */
@@ -1328,8 +1403,8 @@ static int can_rcar_init(const struct device *dev)
 		FIELD_PREP(RCAR_CAN_CFDCFCC0_CFM_MASK, RCAR_CAN_CFDCFCC0_CFM_TX) << RCAR_CAN_CFDCFCC0_CFM_SHIFT) |*/
 		(RCAR_CAN_CFDCFCC0_CFDC_DEPTH_128 << RCAR_CAN_CFDCFCC0_CFDC_SHIFT) |
 		(RCAR_CAN_CFDCFCC0_CFM_TX << RCAR_CAN_CFDCFCC0_CFM_SHIFT) |
-		(RCAR_CAN_CFDCFCC0_CFPLS_SIZE_64 << RCAR_CAN_CFDCFCC0_CFPLS_SHIFT) |
-		(RCAR_CAN_CFDCFCC0_CFE_ENABLE << RCAR_CAN_CFDCFCC0_CFE_SHIFT),
+		(RCAR_CAN_CFDCFCC0_CFPLS_SIZE_64 << RCAR_CAN_CFDCFCC0_CFPLS_SHIFT) /*|*/
+		/*(RCAR_CAN_CFDCFCC0_CFE_ENABLE << RCAR_CAN_CFDCFCC0_CFE_SHIFT)*/,
 		config->reg_addr + RCAR_CAN_CFDCFCC0);
 #endif
 
