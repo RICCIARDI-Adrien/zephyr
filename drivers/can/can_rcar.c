@@ -65,6 +65,54 @@ LOG_MODULE_REGISTER(can_rcar, CONFIG_CAN_LOG_LEVEL);
 /* Global Status Register bits */
 #define RCAR_CAN_CFDGSTS_GRSTSTS BIT(0)
 
+/* Global Acceptance Filter List Entry Control Register */
+#define RCAR_CAN_CFDGAFLECTR 0x0098
+
+/* Global Acceptance Filter List Configuration Register 0 */
+#define RCAR_CAN_CFDGAFLCFG0 0x009C
+
+/* RX Message Buffer Number Register */
+#define RCAR_CAN_CFDRMNB 0x00AC
+
+/* RX FIFO Configuration / Control Registers 0 */
+#define RCAR_CAN_CFDRFCC0 0x00C0
+/* RX FIFO Configuration / Control Registers 0 bits */
+#define RCAR_CAN_CFDRFCC0_RFDC_MASK 0x07
+#define RCAR_CAN_CFDRFCC0_RFDC_SHIFT 8
+#define RCAR_CAN_CFDRFCC0_RFDC_DEPTH_128 0x07
+#define RCAR_CAN_CFDRFCC0_RFPLS_MASK 0x07
+#define RCAR_CAN_CFDRFCC0_RFPLS_SHIFT 4
+#define RCAR_CAN_CFDRFCC0_RFPLS_SIZE_64 0x07
+#define RCAR_CAN_CFDRFCC0_RFE_MASK 0x01
+#define RCAR_CAN_CFDRFCC0_RFE_SHIFT 0
+#define RCAR_CAN_CFDRFCC0_RFE_ENABLE 1
+
+/* Common FIFO Configuration / Control Registers 0 */
+#define RCAR_CAN_CFDCFCC0 0x0120
+/* Common FIFO Configuration / Control Registers 0 bits */
+#define RCAR_CAN_CFDCFCC0_CFDC_MASK 0x03
+#define RCAR_CAN_CFDCFCC0_CFDC_SHIFT 21
+#define RCAR_CAN_CFDCFCC0_CFDC_DEPTH_128 0x07
+#define RCAR_CAN_CFDCFCC0_CFM_MASK 0x03
+#define RCAR_CAN_CFDCFCC0_CFM_SHIFT 8
+#define RCAR_CAN_CFDCFCC0_CFM_TX 0x01
+#define RCAR_CAN_CFDCFCC0_CFPLS_SHIFT 4
+#define RCAR_CAN_CFDCFCC0_CFPLS_SIZE_64 0x07
+#define RCAR_CAN_CFDCFCC0_CFE_SHIFT 0
+#define RCAR_CAN_CFDCFCC0_CFE_ENABLE 1
+
+/* Global Acceptance Filter List ID Register 1 */
+#define RCAR_CAN_CFDGAFLID1 0x1800
+
+/* Global Acceptance Filter List Mask Register 1 */
+#define RCAR_CAN_CFDGAFLM1 0x1804
+
+/* Global Acceptance Filter List Pointer 0 Register 1 */
+#define RCAR_CAN_CFDGAFLP01 0x1808
+
+/* Global Acceptance Filter List Pointer 1 Register 1 */
+#define RCAR_CAN_CFDGAFLP11 0x180C
+
 /* Gen 3 / Gen 4 boards */
 //#else
 
@@ -614,6 +662,10 @@ static int can_rcar_enter_reset_mode(const struct can_rcar_cfg *config, bool for
 
 static int can_rcar_enter_halt_mode(const struct can_rcar_cfg *config)
 {
+#if RCAR_CAN_VERSION_RSCANFD
+	printk("[%s:%d] TODO\n", __func__, __LINE__);
+	return 0;
+#else
 	uint16_t ctlr;
 
 	ctlr = can_rcar_read16(config, RCAR_CAN_CTLR);
@@ -631,6 +683,7 @@ static int can_rcar_enter_halt_mode(const struct can_rcar_cfg *config)
 	}
 
 	return -EAGAIN;
+#endif
 }
 
 static int can_rcar_enter_operation_mode(const struct can_rcar_cfg *config)
@@ -766,12 +819,15 @@ static int can_rcar_set_mode(const struct device *dev, can_mode_t mode)
 		supported |= CAN_MODE_MANUAL_RECOVERY;
 	}
 
+	printk("[%s:%d] mode=0x%08X\n", __func__, __LINE__, mode);
+
 	if ((mode & ~(supported)) != 0) {
 		LOG_ERR("Unsupported mode: 0x%08x", mode);
 		return -ENOTSUP;
 	}
 
 	if (data->common.started) {
+		printk("[%s:%d] err started -EBUSY\n", __func__, __LINE__);
 		return -EBUSY;
 	}
 
@@ -829,12 +885,12 @@ static void can_rcar_set_bittiming(const struct can_rcar_cfg *config,
 #if CONFIG_SOC_SERIES_RCAR_GEN5
 	uint32_t cfg;
 
-	printk("[%s:%d] entry\n", __func__, __LINE__);
-
 	cfg = (FIELD_PREP(RCAR_CAN_CFDC0NCFG_NBRP_MASK, timing->prescaler) << RCAR_CAN_CFDC0NCFG_NBRP_SHIFT) |
 		(FIELD_PREP(RCAR_CAN_CFDC0NCFG_NSJW_MASK, timing->sjw) << RCAR_CAN_CFDC0NCFG_NSJW_SHIFT) |
 		(FIELD_PREP(RCAR_CAN_CFDC0NCFG_NTSEG1_MASK, timing->phase_seg1) << RCAR_CAN_CFDC0NCFG_NTSEG1_SHIFT) |
 		(FIELD_PREP(RCAR_CAN_CFDC0NCFG_NTSEG2_MASK, timing->phase_seg2) << RCAR_CAN_CFDC0NCFG_NTSEG2_SHIFT);
+
+	printk("[%s:%d] cfg=0x%08X\n", __func__, __LINE__, cfg);
 
 	sys_write32(cfg, config->reg_addr + RCAR_CAN_CFDC0NCFG);
 #else
@@ -1234,12 +1290,58 @@ static int can_rcar_init(const struct device *dev)
 		return ret;
 	}
 
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5
+	/*
+	 * Configure the rules table by creating one rule that matches them all (reception frames)
+	 */
+	/* Enable write access for page 0 */
+	sys_write32(1 << 8, config->reg_addr + RCAR_CAN_CFDGAFLECTR);
+	/* Configure one rule for channel 0 */
+	sys_write32(1 << 16, config->reg_addr + RCAR_CAN_CFDGAFLCFG0);
+	/* Do not set IDs as they won't be taken into account by the mask register */
+	sys_write32(0, config->reg_addr + RCAR_CAN_CFDGAFLID1);
+	/* Accept all received CAN frames */
+	sys_write32(0, config->reg_addr + RCAR_CAN_CFDGAFLM1);
+	/* Disable DLC check */
+	sys_write32(0, config->reg_addr + RCAR_CAN_CFDGAFLP01);
+	/* Use RX FIFO 0 as target for reception */
+	sys_write32(0x00000001, config->reg_addr + RCAR_CAN_CFDGAFLP11);
+	/* Disable write access for page 0 */
+	sys_write32(0, config->reg_addr + RCAR_CAN_CFDGAFLECTR);
+
+	/* Disable the reception message buffers as FIFO is used instead */
+	sys_write32(0, config->reg_addr + RCAR_CAN_CFDRMNB);
+
+	/* Configure the reception FIFO, with a depth of 128 messages and 64 bytes per message */
+	sys_write32(
+		/*(FIELD_PREP(RCAR_CAN_CFDRFCC0_RFDC_MASK, RCAR_CAN_CFDRFCC0_RFDC_DEPTH_128) << RCAR_CAN_CFDRFCC0_RFDC_SHIFT) |
+		(FIELD_PREP(RCAR_CAN_CFDRFCC0_RFPLS_MASK, RCAR_CAN_CFDRFCC0_RFPLS_SIZE_64) << RCAR_CAN_CFDRFCC0_RFPLS_SHIFT) |
+		(FIELD_PREP(RCAR_CAN_CFDRFCC0_RFE_MASK, RCAR_CAN_CFDRFCC0_RFE_ENABLE) << RCAR_CAN_CFDRFCC0_RFE_SHIFT),*/
+		(RCAR_CAN_CFDRFCC0_RFDC_DEPTH_128 << RCAR_CAN_CFDRFCC0_RFDC_SHIFT) |
+		(RCAR_CAN_CFDRFCC0_RFPLS_SIZE_64 << RCAR_CAN_CFDRFCC0_RFPLS_SHIFT) |
+		(RCAR_CAN_CFDRFCC0_RFE_ENABLE << RCAR_CAN_CFDRFCC0_RFE_SHIFT),
+		config->reg_addr + RCAR_CAN_CFDRFCC0);
+
+	/* Configure a common FIFO for transmission, with a depth of 128 messages and 64 bytes per message */
+	sys_write32(
+		/*FIELD_PREP(RCAR_CAN_CFDCFCC0_CFDC_MASK, RCAR_CAN_CFDCFCC0_CFDC_DEPTH_128) << RCAR_CAN_CFDCFCC0_CFDC_SHIFT) |
+		FIELD_PREP(RCAR_CAN_CFDCFCC0_CFM_MASK, RCAR_CAN_CFDCFCC0_CFM_TX) << RCAR_CAN_CFDCFCC0_CFM_SHIFT) |*/
+		(RCAR_CAN_CFDCFCC0_CFDC_DEPTH_128 << RCAR_CAN_CFDCFCC0_CFDC_SHIFT) |
+		(RCAR_CAN_CFDCFCC0_CFM_TX << RCAR_CAN_CFDCFCC0_CFM_SHIFT) |
+		(RCAR_CAN_CFDCFCC0_CFPLS_SIZE_64 << RCAR_CAN_CFDCFCC0_CFPLS_SHIFT) |
+		(RCAR_CAN_CFDCFCC0_CFE_ENABLE << RCAR_CAN_CFDCFCC0_CFE_SHIFT),
+		config->reg_addr + RCAR_CAN_CFDCFCC0);
+#endif
+
 	ret = can_rcar_set_mode(dev, CAN_MODE_NORMAL);
 	if (ret) {
 		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
 		return ret;
 	}
 
+	// TODO activ interrupts CFDRFCC0
+
+#ifndef CONFIG_SOC_SERIES_RCAR_GEN5
 	ctlr = can_rcar_read16(config, RCAR_CAN_CTLR);
 	ctlr |= RCAR_CAN_CTLR_IDFM_MIXED;       /* Select mixed ID mode */
 	ctlr &= ~RCAR_CAN_CTLR_BOM_ENT;         /* Clear entry to halt automatically at bus-off */
@@ -1273,6 +1375,7 @@ static int can_rcar_init(const struct device *dev)
 
 	/* Enable interrupts for all type of errors */
 	sys_write8(0xFF, config->reg_addr + RCAR_CAN_EIER);
+#endif
 
 	config->init_func(dev);
 
