@@ -53,6 +53,7 @@ LOG_MODULE_REGISTER(can_rcar, CONFIG_CAN_LOG_LEVEL);
 /* Channel 0 Status Register */
 #define RCAR_CAN_CFDC0STS 0x0008
 /* Channel 0 Status Register bits */
+#define RCAR_CAN_GRAMINIT_CSLPSTS BIT(3)
 #define RCAR_CAN_CFDC0STS_CSLPSTS BIT(2)
 #define RCAR_CAN_CFDC0STS_CRSTSTS BIT(0)
 
@@ -78,9 +79,9 @@ LOG_MODULE_REGISTER(can_rcar, CONFIG_CAN_LOG_LEVEL);
 /* RX Message Buffer Number Register */
 #define RCAR_CAN_CFDRMNB 0x00AC
 
-/* RX FIFO Configuration / Control Registers 0 */
+/* RX FIFO Configuration / Control Register 0 */
 #define RCAR_CAN_CFDRFCC0 0x00C0
-/* RX FIFO Configuration / Control Registers 0 bits */
+/* RX FIFO Configuration / Control Register 0 bits */
 #define RCAR_CAN_CFDRFCC0_RFDC_MASK 0x07
 #define RCAR_CAN_CFDRFCC0_RFDC_SHIFT 8
 #define RCAR_CAN_CFDRFCC0_RFDC_DEPTH_128 0x07
@@ -91,9 +92,9 @@ LOG_MODULE_REGISTER(can_rcar, CONFIG_CAN_LOG_LEVEL);
 #define RCAR_CAN_CFDRFCC0_RFE_SHIFT 0
 #define RCAR_CAN_CFDRFCC0_RFE_ENABLE 1
 
-/* Common FIFO Configuration / Control Registers 0 */
+/* Common FIFO Configuration / Control Register 0 */
 #define RCAR_CAN_CFDCFCC0 0x0120
-/* Common FIFO Configuration / Control Registers 0 bits */
+/* Common FIFO Configuration / Control Register 0 bits */
 #define RCAR_CAN_CFDCFCC0_CFDC_MASK 0x03
 #define RCAR_CAN_CFDCFCC0_CFDC_SHIFT 21
 #define RCAR_CAN_CFDCFCC0_CFDC_DEPTH_128 0x07
@@ -106,6 +107,9 @@ LOG_MODULE_REGISTER(can_rcar, CONFIG_CAN_LOG_LEVEL);
 #define RCAR_CAN_CFDCFCC0_CFE_SHIFT 0
 #define RCAR_CAN_CFDCFCC0_CFE_ENABLE 1
 
+/* Common FIFO Pointer Control Register 0 */
+#define RCAR_CAN_CFDCFPCTR0 0x0240
+
 /* Global Acceptance Filter List ID Register 1 */
 #define RCAR_CAN_CFDGAFLID1 0x1800
 
@@ -117,6 +121,20 @@ LOG_MODULE_REGISTER(can_rcar, CONFIG_CAN_LOG_LEVEL);
 
 /* Global Acceptance Filter List Pointer 1 Register 1 */
 #define RCAR_CAN_CFDGAFLP11 0x180C
+
+/* Common FIFO Access Message Buffer Component */
+#define RCAR_CAN_CFDCFMBCP0 0x6400
+
+#define RCAR_CAN_FIFO_ACCESS_DATA_REGISTERS_COUNT 16
+
+typedef struct
+{
+	uint32_t id;
+	uint32_t dlc_timestamp;
+	uint32_t ctrl_status;
+	uint32_t data[RCAR_CAN_FIFO_ACCESS_DATA_REGISTERS_COUNT];
+	//uint8_t data[RCAR_CAN_FIFO_ACCESS_DATA_REGISTERS_COUNT * 4];
+} __packed rcar_msg_buffer_component_t;
 
 /* Gen 3 / Gen 4 boards */
 //#else
@@ -557,6 +575,8 @@ static void can_rcar_isr(const struct device *dev)
 	struct can_rcar_data *data = dev->data;
 	uint8_t isr, unsent;
 
+	printk("[%s:%d] entry IRQ\n", __func__, __LINE__);
+
 	isr = sys_read8(config->reg_addr + RCAR_CAN_ISR);
 	if (isr & RCAR_CAN_ISR_ERSF) {
 		/* Clear the Error interrupt */
@@ -696,7 +716,7 @@ static int can_rcar_enter_halt_mode(const struct can_rcar_cfg *config)
 
 static int can_rcar_enter_operation_mode(const struct can_rcar_cfg *config)
 {
-#if CONFIG_SOC_SERIES_RCAR_GEN5
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5
 	uint32_t val, i;
 
 	/* Switch the module to global operation mode */
@@ -767,6 +787,8 @@ static int can_rcar_get_capabilities(const struct device *dev, can_mode_t *cap)
 {
 	ARG_UNUSED(dev);
 
+	printk("[%s:%d] entry\n", __func__, __LINE__);
+
 	*cap = CAN_MODE_NORMAL | CAN_MODE_LOOPBACK | CAN_MODE_LISTENONLY;
 
 	return 0;
@@ -819,6 +841,8 @@ static int can_rcar_stop(const struct device *dev)
 	struct can_rcar_data *data = dev->data;
 	int ret;
 
+	printk("[%s:%d] entry\n", __func__, __LINE__);
+
 	if (!data->common.started) {
 		return -EALREADY;
 	}
@@ -865,11 +889,11 @@ static int can_rcar_set_mode(const struct device *dev, can_mode_t mode)
 	int ret = 0;
 	uint32_t val;
 
+	printk("[%s:%d] entry, mode=0x%08X\n", __func__, __LINE__, mode);
+
 	if (IS_ENABLED(CONFIG_CAN_MANUAL_RECOVERY_MODE)) {
 		supported |= CAN_MODE_MANUAL_RECOVERY;
 	}
-
-	printk("[%s:%d] mode=0x%08X\n", __func__, __LINE__, mode);
 
 	if ((mode & ~(supported)) != 0) {
 		LOG_ERR("Unsupported mode: 0x%08x", mode);
@@ -883,7 +907,7 @@ static int can_rcar_set_mode(const struct device *dev, can_mode_t mode)
 
 	k_mutex_lock(&data->inst_mutex, K_FOREVER);
 
-#if CONFIG_SOC_SERIES_RCAR_GEN5
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5
 	// TEST
 	if ((mode & (CAN_MODE_LOOPBACK | CAN_MODE_LISTENONLY)) ==
 	    (CAN_MODE_LOOPBACK | CAN_MODE_LISTENONLY)) {
@@ -955,7 +979,7 @@ unlock:
 static void can_rcar_set_bittiming(const struct can_rcar_cfg *config,
 				   const struct can_timing *timing)
 {
-#if CONFIG_SOC_SERIES_RCAR_GEN5
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5
 	uint32_t cfg;
 
 	cfg = (FIELD_PREP(RCAR_CAN_CFDC0NCFG_NBRP_MASK, timing->prescaler) << RCAR_CAN_CFDC0NCFG_NBRP_SHIFT) |
@@ -1047,6 +1071,8 @@ static void can_rcar_set_state_change_callback(const struct device *dev,
 {
 	struct can_rcar_data *data = dev->data;
 
+	printk("[%s:%d] entry\n", __func__, __LINE__);
+
 	data->common.state_change_cb = cb;
 	data->common.state_change_cb_user_data = user_data;
 }
@@ -1056,6 +1082,8 @@ static int can_rcar_get_state(const struct device *dev, enum can_state *state,
 {
 	const struct can_rcar_cfg *config = dev->config;
 	struct can_rcar_data *data = dev->data;
+
+	printk("[%s:%d] entry\n", __func__, __LINE__);
 
 	if (state != NULL) {
 		if (!data->common.started) {
@@ -1079,6 +1107,8 @@ static int can_rcar_recover(const struct device *dev, k_timeout_t timeout)
 	struct can_rcar_data *data = dev->data;
 	int64_t start_time;
 	int ret = 0;
+
+	printk("[%s:%d] entry\n", __func__, __LINE__);
 
 	if (!data->common.started) {
 		return -ENETDOWN;
@@ -1125,9 +1155,10 @@ static int can_rcar_send(const struct device *dev, const struct can_frame *frame
 	struct can_rcar_tx_cb *tx_cb;
 	uint32_t identifier;
 	int i;
+	volatile rcar_msg_buffer_component_t *msg = (volatile rcar_msg_buffer_component_t *)(config->reg_addr +  RCAR_CAN_CFDCFMBCP0);
 
 	printk("[%s:%d] entry\n", __func__, __LINE__);
-
+/*
 	LOG_DBG("Sending %d bytes on %s. "
 		"Id: 0x%x, "
 		"ID type: %s, "
@@ -1136,7 +1167,7 @@ static int can_rcar_send(const struct device *dev, const struct can_frame *frame
 		, frame->id
 		, (frame->flags & CAN_FRAME_IDE) != 0 ?
 		"extended" : "standard"
-		, (frame->flags & CAN_FRAME_RTR) != 0 ? "yes" : "no");
+		, (frame->flags & CAN_FRAME_RTR) != 0 ? "yes" : "no");*/
 
 	if (frame->dlc > CAN_MAX_DLC) {
 		LOG_ERR("DLC of %d exceeds maximum (%d)",
@@ -1153,8 +1184,12 @@ static int can_rcar_send(const struct device *dev, const struct can_frame *frame
 		return -ENETDOWN;
 	}
 
+	printk("[%s:%d] attente slot TX FIFO\n", __func__, __LINE__);
+
+//	while (ctrl_base_address->CFDFFSTS.BIT.CF0FLL);
+
 	/* Wait for a slot into the tx FIFO */
-	if (k_sem_take(&data->tx_sem, timeout) != 0) {
+/*	if (k_sem_take(&data->tx_sem, timeout) != 0) {
 		return -EAGAIN;
 	}
 
@@ -1166,8 +1201,39 @@ static int can_rcar_send(const struct device *dev, const struct can_frame *frame
 	data->tx_head++;
 	if (data->tx_head >= RCAR_CAN_FIFO_DEPTH) {
 		data->tx_head = 0;
-	}
+	}*/
 
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5
+	// TODO IDE, RTR, FD
+
+	/* Set the CAN ID */
+	/*sys_write32(0x2CA, (uint32_t)&msg->id);
+	sys_write32(8 << 28, (uint32_t)&msg->dlc_timestamp);
+	sys_write32(0, (uint32_t)&msg->ctrl_status);
+	sys_write32(0xBABEB00B, (uint32_t)&msg->data[0]);
+	sys_write32(0xDEADBEEF, (uint32_t)&msg->data[1]);*/
+
+	/*sys_write32(0x2CA, config->reg_addr + RCAR_CAN_CFDCFMBCP0);
+	sys_write32(8 << 28, config->reg_addr + RCAR_CAN_CFDCFMBCP0 + 4);
+	sys_write32(0, config->reg_addr + RCAR_CAN_CFDCFMBCP0 + 8);
+	sys_write32(0xBABEB00B, config->reg_addr + RCAR_CAN_CFDCFMBCP0 + 12);
+	sys_write32(0xDEADBEEF, config->reg_addr + RCAR_CAN_CFDCFMBCP0 + 16);*/
+
+	msg->id = 0x2CA;
+	msg->dlc_timestamp = 0;
+	msg->ctrl_status = 0;
+	msg->data[0] = 0xBABEB00B;
+	msg->data[1] = 0xDEADBEEF;
+
+	sys_write32(0xFF, config->reg_addr + RCAR_CAN_CFDCFPCTR0);
+
+//	data->tx_unsent++;
+
+	printk("[%s:%d] transmission sans crash\n", __func__, __LINE__);
+
+	// TEST sans IRQ
+	//k_sem_give(&data->tx_sem);
+#else
 	if ((frame->flags & CAN_FRAME_IDE) != 0) {
 		identifier = frame->id | RCAR_CAN_MB_IDE;
 	} else {
@@ -1196,8 +1262,9 @@ static int can_rcar_send(const struct device *dev, const struct can_frame *frame
 	 * to the next mailbox location
 	 */
 	sys_write8(0xff, config->reg_addr + RCAR_CAN_TFPCR);
+#endif
 
-	k_mutex_unlock(&data->inst_mutex);
+	//k_mutex_unlock(&data->inst_mutex);
 
 	return 0;
 }
@@ -1229,6 +1296,8 @@ static int can_rcar_add_rx_filter(const struct device *dev, can_rx_callback_t cb
 	struct can_rcar_data *data = dev->data;
 	int filter_id;
 
+	printk("[%s:%d] entry\n", __func__, __LINE__);
+
 	if ((filter->flags & ~(CAN_FILTER_IDE)) != 0) {
 		LOG_ERR("unsupported CAN filter flags 0x%02x", filter->flags);
 		return -ENOTSUP;
@@ -1243,6 +1312,8 @@ static int can_rcar_add_rx_filter(const struct device *dev, can_rx_callback_t cb
 static void can_rcar_remove_rx_filter(const struct device *dev, int filter_id)
 {
 	struct can_rcar_data *data = dev->data;
+
+	printk("[%s:%d] entry\n", __func__, __LINE__);
 
 	if (filter_id < 0 || filter_id >= CONFIG_CAN_RCAR_MAX_FILTERS) {
 		LOG_ERR("filter ID %d out of bounds", filter_id);
@@ -1322,7 +1393,8 @@ static int can_rcar_init(const struct device *dev)
 	}
 
 #ifdef CONFIG_SOC_SERIES_RCAR_GEN5 // TODO
-	ret = clock_control_on(config->clock_dev, config->bus_clk);
+	//ret = clock_control_on(config->clock_dev, config->bus_clk);
+	ret = 0;
 #else
 	ret = clock_control_on(config->clock_dev,
 			       (clock_control_subsys_t)&config->bus_clk);
@@ -1331,6 +1403,12 @@ static int can_rcar_init(const struct device *dev)
 		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
 		return ret;
 	}
+
+#ifdef CONFIG_SOC_SERIES_RCAR_GEN5
+	// TODO timeout
+	/* Wait for the CAN RAM initialization to terminate */
+	while (sys_read32(config->reg_addr + RCAR_CAN_CFDC0STS) & RCAR_CAN_GRAMINIT_CSLPSTS);
+#endif
 
 	ret = can_rcar_enter_reset_mode(config, false);
 	__ASSERT(!ret, "Fail to set CAN controller to reset mode");
@@ -1452,7 +1530,7 @@ static int can_rcar_init(const struct device *dev)
 	sys_write8(0xFF, config->reg_addr + RCAR_CAN_EIER);
 #endif
 
-	config->init_func(dev);
+	//config->init_func(dev);
 
 	printk("[%s:%d] fin OK\n", __func__, __LINE__);
 
@@ -1475,6 +1553,8 @@ static int can_rcar_get_core_clock(const struct device *dev, uint32_t *rate)
 static int can_rcar_get_max_filters(const struct device *dev, bool ide)
 {
 	ARG_UNUSED(ide);
+
+	printk("[%s:%d] entry\n", __func__, __LINE__);
 
 	return CONFIG_CAN_RCAR_MAX_FILTERS;
 }
