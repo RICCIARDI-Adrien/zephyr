@@ -348,7 +348,7 @@
 
 		can0: can@c1420000 {
 			compatible = "renesas,rcar-can";
-			reg = <0xc1420000 0x20000>; // TEST pour 20000
+			reg = <0xc1420000 0x40000>; // TEST pour 20000
 		};
 	};
 };
