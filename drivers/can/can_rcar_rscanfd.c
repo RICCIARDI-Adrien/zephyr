@@ -116,11 +116,14 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 
 #define RSCANFD_CAN_CLOCK_RATE 80000000
 
+#define RSCANFD_CHANNELS_COUNT 8
+
 struct can_rcar_rscanfd_global_cfg {
 	uint32_t reg;
-	const struct device *global_clock_dev;
+	const struct device *clock_dev;
 	// TODO utiliser API clock générique
 	clock_control_subsys_t global_clk;
+	clock_control_subsys_t module_clk;
 };
 
 struct can_rcar_rscanfd_cfg {
@@ -188,7 +191,7 @@ static inline int can_rscanfd_busy_wait(mem_addr_t reg, uint32_t bit_mask, bool 
 	return -EAGAIN;
 }
 
-static int can_rscanfd_enter_reset_mode(const struct can_rcar_rscanfd_cfg *config/*, bool force*/)
+static int can_rcar_rscanfd_enter_reset_mode(const struct can_rcar_rscanfd_global_cfg *config/*, bool force*/)
 {
 	/* Request the global reset mode, resetting all other fields in the same time */
 	sys_write32(RCAR_CAN_CFDGCTR_GMDC_GLOBAL_RESET_MODE_REQUEST, config->reg + RCAR_CAN_CFDGCTR);
@@ -291,7 +294,7 @@ static int can_rscanfd_get_core_clock(const struct device *dev, uint32_t *rate)
 	const struct can_rcar_rscanfd_global_cfg *global_config = config->global_dev->config;
 
 	printk("[%s:%d] config->clk=%p\n", __func__, __LINE__, global_config->global_clk);
-	return clock_control_get_rate(global_config->global_clock_dev, global_config->global_clk, rate);
+	return clock_control_get_rate(global_config->clock_dev, global_config->global_clk, rate);
 }
 
 static int can_rscanfd_get_max_filters(const struct device *dev, bool ide)
@@ -365,6 +368,7 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 		/*.bus_clk.rate = 40000000, TODO */					\
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n)			\
 	};									\
+	BUILD_ASSERT(DT_INST_PROP(n, channel) < RSCANFD_CHANNELS_COUNT, "Channel number is invalid."); \
 	/*static struct can_rcar_data can_rcar_data_##n;*/				\
 										\
 	CAN_DEVICE_DT_INST_DEFINE(n, can_rcar_rscanfd_init,				\
@@ -421,8 +425,8 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 		return -ENODEV;
 	}*/
 
-	if (!device_is_ready(config->global_clock_dev)) {
-		LOG_ERR("Clock control device is not ready.");
+	if (!device_is_ready(config->clock_dev)) {
+		LOG_ERR("The clock device is not ready.");
 		return -ENODEV;
 	}
 
@@ -441,7 +445,7 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 		return ret;
 	}*/
 
-	ret = clock_control_on(config->global_clock_dev, config->global_clk);
+	ret = clock_control_on(config->clock_dev, config->global_clk);
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the global clock on.");
 		return ret;
@@ -450,13 +454,13 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	// TEST
 	{
 		uint32_t rate;
-		ret = clock_control_get_rate(config->global_clock_dev, config->global_clk, &rate);
+		ret = clock_control_get_rate(config->clock_dev, config->global_clk, &rate);
 		if (ret != 0) printk("[%s:%d] err rate clock %d\n",  __func__, __LINE__, ret);
 		else printk("[%s:%d] rate clock avant %u\n",  __func__, __LINE__, rate);
 	}
 
 	/* Make sure that the clock is fast enough for 8Mbit/s CAN-FD */
-	ret = clock_control_set_rate(config->global_clock_dev, config->global_clk,
+	ret = clock_control_set_rate(config->clock_dev, config->global_clk,
 				     (clock_control_subsys_rate_t)RSCANFD_CAN_CLOCK_RATE);
 	if (ret != 0) {
 		LOG_ERR("Failed to set the global clock rate to %u Hz.", RSCANFD_CAN_CLOCK_RATE);
@@ -466,9 +470,15 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	// TEST
 	{
 		uint32_t rate;
-		ret = clock_control_get_rate(config->global_clock_dev, config->global_clk, &rate);
+		ret = clock_control_get_rate(config->clock_dev, config->global_clk, &rate);
 		if (ret != 0) printk("[%s:%d] err rate clock %d\n",  __func__, __LINE__, ret);
 		else printk("[%s:%d] rate clock apres %u\n",  __func__, __LINE__, rate);
+	}
+
+	ret = clock_control_on(config->clock_dev, config->module_clk);
+	if (ret != 0) {
+		LOG_ERR("Failed to turn the module clock on.");
+		return ret;
 	}
 
 	/* Wait for the CAN RAM initialization to terminate */
@@ -480,14 +490,12 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	}
 	printk("[%s:%d] apres init RAM\n",  __func__, __LINE__);
 
-#if 0
 	/* The CAN module registers can be configured only in reset mode */
-	ret = can_rscanfd_enter_reset_mode(config/*, false*/);
+	ret = can_rcar_rscanfd_enter_reset_mode(config/*, false*/);
 	if (ret != 0) {
-		LOG_ERR("Failed to enter reset mode.");
+		LOG_ERR("Failed to enter the reset mode.");
 		return ret;
 	}
-#endif
 
 #if 0
 	ret = can_rcar_enter_reset_mode(config, false);
@@ -621,10 +629,11 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 #define CAN_RCAR_RSCANFD_GLOBAL_INIT(n)								\
 	static const struct can_rcar_rscanfd_global_cfg can_rcar_rscanfd_global_cfg_##n = {	\
 		.reg = DT_INST_REG_ADDR(n),							\
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),				\
 		.global_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 0, name),	\
-		.global_clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n))			\
+		.module_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 1, name),	\
 	};											\
-DEVICE_DT_INST_DEFINE(n, can_rcar_rscanfd_global_init,						\
+	DEVICE_DT_INST_DEFINE(n, can_rcar_rscanfd_global_init,					\
 			 NULL,									\
 			 NULL,									\
 			&can_rcar_rscanfd_global_cfg_##n,					\

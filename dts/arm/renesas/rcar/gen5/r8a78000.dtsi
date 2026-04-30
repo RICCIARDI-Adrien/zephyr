@@ -238,8 +238,8 @@
 				 <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>;
 		};*/
 		can0_global: can0-global@c1420000 {
-			clocks = <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>/*,
-				 <&scmi_clk R8A78000_CLK_CANFD0>*/;
+			clocks = <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>,
+				 <&scmi_clk R8A78000_CLK_CANFD0>;
 
 			can0: can0 {
 				channel = <0>;
