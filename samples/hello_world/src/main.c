@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <zephyr/drivers/can.h>
 
-static const struct device *can_dev = DEVICE_DT_GET(DT_NODELABEL(can0));
+static const struct device *can_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
 
 int main(void)
 {
@@ -15,6 +15,9 @@ int main(void)
 	struct can_frame frame;
 
 	printf("Hello World CAN bordel! %s\n", CONFIG_BOARD_TARGET);
+
+	// TEST
+	k_sleep(K_FOREVER);
 
 	ret = can_start(can_dev);
 	if (ret != 0)
