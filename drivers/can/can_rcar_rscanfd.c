@@ -123,12 +123,14 @@ struct can_rcar_rscanfd_global_cfg {
 	clock_control_subsys_t global_clk;
 };
 
-struct can_rscanfd_cfg {
+struct can_rcar_rscanfd_cfg {
 	const struct can_driver_config common;
-	uint32_t reg_addr;
-	int reg_size;
+	const struct device *global_dev;
+	uint32_t reg;
+	uint32_t channel;
+	//int reg_size;
 	//init_func_t init_func;
-	const struct device *clock_dev;
+	//const struct device *clock_dev;
 /*#ifdef CONFIG_SOC_SERIES_RCAR_GEN5 // TODO
 	clock_control_subsys_t mod_clk;
 	clock_control_subsys_t bus_clk;
@@ -137,7 +139,7 @@ struct can_rscanfd_cfg {
 	struct rcar_cpg_clk bus_clk;
 #endif*/
 	// TODO utiliser API clock générique
-	clock_control_subsys_t clk;
+	//clock_control_subsys_t clk;
 	const struct pinctrl_dev_config *pcfg;
 };
 
@@ -186,12 +188,12 @@ static inline int can_rscanfd_busy_wait(mem_addr_t reg, uint32_t bit_mask, bool 
 	return -EAGAIN;
 }
 
-static int can_rscanfd_enter_reset_mode(const struct can_rscanfd_cfg *config/*, bool force*/)
+static int can_rscanfd_enter_reset_mode(const struct can_rcar_rscanfd_cfg *config/*, bool force*/)
 {
 	/* Request the global reset mode, resetting all other fields in the same time */
-	sys_write32(RCAR_CAN_CFDGCTR_GMDC_GLOBAL_RESET_MODE_REQUEST, config->reg_addr + RCAR_CAN_CFDGCTR);
+	sys_write32(RCAR_CAN_CFDGCTR_GMDC_GLOBAL_RESET_MODE_REQUEST, config->reg + RCAR_CAN_CFDGCTR);
 
-	return can_rscanfd_busy_wait(config->reg_addr + RCAR_CAN_CFDGSTS, RCAR_CAN_CFDGSTS_GRSTSTS, 1);
+	return can_rscanfd_busy_wait(config->reg + RCAR_CAN_CFDGSTS, RCAR_CAN_CFDGSTS_GRSTSTS, 1);
 }
 
 static int can_rscanfd_get_capabilities(const struct device *dev, can_mode_t *cap)
@@ -285,10 +287,11 @@ static int can_rscanfd_get_state(const struct device *dev, enum can_state *state
 
 static int can_rscanfd_get_core_clock(const struct device *dev, uint32_t *rate)
 {
-	const struct can_rscanfd_cfg *config = dev->config;
+	const struct can_rcar_rscanfd_cfg *config = dev->config;
+	const struct can_rcar_rscanfd_global_cfg *global_config = config->global_dev->config;
 
-	printk("[%s:%d] config->clk=%p\n", __func__, __LINE__, config->clk);
-	return clock_control_get_rate(config->clock_dev, config->clk, rate);
+	printk("[%s:%d] config->clk=%p\n", __func__, __LINE__, global_config->global_clk);
+	return clock_control_get_rate(global_config->global_clock_dev, global_config->global_clk, rate);
 }
 
 static int can_rscanfd_get_max_filters(const struct device *dev, bool ide)
@@ -301,7 +304,7 @@ static int can_rscanfd_get_max_filters(const struct device *dev, bool ide)
 	return /*CONFIG_CAN_RCAR_MAX_FILTERS*/10;
 }
 
-static DEVICE_API(can, can_rscanfd_driver_api) = {
+static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 	.get_capabilities = can_rscanfd_get_capabilities,
 	.start = can_rscanfd_start,
 	.stop = can_rscanfd_stop,
@@ -333,6 +336,62 @@ static DEVICE_API(can, can_rscanfd_driver_api) = {
 		.prescaler = 0x400
 	}
 };
+
+static int can_rcar_rscanfd_init(const struct device *dev)
+{
+	const struct can_rcar_rscanfd_cfg *config = dev->config;
+
+	printk("[%s:%d] entry DRIVER CUSTOM CHANNEL %d\n", __func__, __LINE__, config->channel);
+
+	return 0;
+}
+
+/*
+ * A CAN controller channel.
+ */
+#define CAN_RCAR_RSCANFD_INIT(n)							\
+	PINCTRL_DT_INST_DEFINE(n);						\
+	/*static void can_rcar_##n##_init(const struct device *dev);*/		\
+	static const struct can_rcar_rscanfd_cfg can_rcar_rscanfd_cfg_##n = {			\
+		.common = CAN_DT_DRIVER_CONFIG_INST_GET(n, 0, 1000000),		\
+		.global_dev = DEVICE_DT_GET(DT_INST_PARENT(n)), \
+		.reg = DT_REG_ADDR(DT_INST_PARENT(n)),				\
+		.channel = DT_INST_PROP(n, channel), \
+		/*.reg_size = DT_INST_REG_SIZE(n),*/				\
+		/*.init_func = can_rcar_##n##_init,*/				\
+		/*CAN_RCAR_INIT_CLOCKS(n),*/ 						\
+		/*.clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 0, name),*/ \
+		/*.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),*/		\
+		/*.bus_clk.rate = 40000000, TODO */					\
+		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n)			\
+	};									\
+	/*static struct can_rcar_data can_rcar_data_##n;*/				\
+										\
+	CAN_DEVICE_DT_INST_DEFINE(n, can_rcar_rscanfd_init,				\
+				  NULL,						\
+				  /*&can_rcar_data_##n,*/NULL,				\
+				  &can_rcar_rscanfd_cfg_##n,				\
+				  POST_KERNEL,					\
+				  CONFIG_CAN_INIT_PRIORITY,			\
+				  &can_rcar_rscanfd_driver_api);				/*\
+				  						\
+	static void can_rcar_##n##_init(const struct device *dev)		\
+	{									\
+		IRQ_CONNECT(DT_INST_IRQN(n),					\
+			    0,							\
+			    can_rcar_isr,					\
+			    DEVICE_DT_INST_GET(n), 0);				\
+										\
+		irq_enable(DT_INST_IRQN(n));					\
+	}*/
+
+DT_INST_FOREACH_STATUS_OKAY(CAN_RCAR_RSCANFD_INIT);
+
+/*
+ * The CAN controller.
+ */
+#undef DT_DRV_COMPAT
+#define DT_DRV_COMPAT renesas_rcar_rscanfd_global
 
 static int can_rcar_rscanfd_global_init(const struct device *dev)
 {
@@ -559,62 +618,18 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	return 0;
 }
 
-#if 0
-#define CAN_RSCANFD_INIT(n)							\
-	PINCTRL_DT_INST_DEFINE(n);						\
-	/*static void can_rcar_##n##_init(const struct device *dev);*/		\
-	static const struct can_rscanfd_cfg can_rscanfd_cfg_##n = {			\
-		.common = CAN_DT_DRIVER_CONFIG_INST_GET(n, 0, 1000000),		\
-		.reg_addr = DT_INST_REG_ADDR(n),				\
-		.reg_size = DT_INST_REG_SIZE(n),				\
-		/*.init_func = can_rcar_##n##_init,*/				\
-		/*CAN_RCAR_INIT_CLOCKS(n),*/ 						\
-		.clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 0, name), \
-		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),		\
-		/*.bus_clk.rate = 40000000, TODO */					\
-		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n)			\
-	};									\
-	/*static struct can_rcar_data can_rcar_data_##n;*/				\
-										\
-	CAN_DEVICE_DT_INST_DEFINE(n, can_rscanfd_init,				\
-				  NULL,						\
-				  /*&can_rcar_data_##n,*/NULL,				\
-				  &can_rscanfd_cfg_##n,				\
-				  POST_KERNEL,					\
-				  CONFIG_CAN_INIT_PRIORITY,			\
-				  &can_rscanfd_driver_api);				/*\
-				  						\
-	static void can_rcar_##n##_init(const struct device *dev)		\
-	{									\
-		IRQ_CONNECT(DT_INST_IRQN(n),					\
-			    0,							\
-			    can_rcar_isr,					\
-			    DEVICE_DT_INST_GET(n), 0);				\
-										\
-		irq_enable(DT_INST_IRQN(n));					\
-	}*/
-
-DT_INST_FOREACH_STATUS_OKAY(CAN_RSCANFD_INIT)
-#endif
-
-/*
- * The CAN controller.
- */
-#undef DT_DRV_COMPAT
-#define DT_DRV_COMPAT renesas_rcar_rscanfd_global
-
-#define CAN_RCAR_RSCANFD_GLOBAL_INIT(n) \
-	static const struct can_rcar_rscanfd_global_cfg can_rcar_rscanfd_global_cfg_##n = { \
-		.reg = DT_INST_REG_ADDR(n), \
-		.global_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 0, name), \
-		.global_clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)) \
-	}; \
-	DEVICE_DT_INST_DEFINE(n, can_rcar_rscanfd_global_init, \
-			 NULL, \
-			 NULL, \
-			 &can_rcar_rscanfd_global_cfg_##n, \
-			 POST_KERNEL, \
-			 CONFIG_KERNEL_INIT_PRIORITY_DEVICE,   \
+#define CAN_RCAR_RSCANFD_GLOBAL_INIT(n)								\
+	static const struct can_rcar_rscanfd_global_cfg can_rcar_rscanfd_global_cfg_##n = {	\
+		.reg = DT_INST_REG_ADDR(n),							\
+		.global_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 0, name),	\
+		.global_clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n))			\
+	};											\
+DEVICE_DT_INST_DEFINE(n, can_rcar_rscanfd_global_init,						\
+			 NULL,									\
+			 NULL,									\
+			&can_rcar_rscanfd_global_cfg_##n,					\
+			 POST_KERNEL,								\
+			 CONFIG_KERNEL_INIT_PRIORITY_DEVICE,					\
 			 NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(CAN_RCAR_RSCANFD_GLOBAL_INIT);
