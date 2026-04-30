@@ -238,7 +238,13 @@
 				 <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>;
 		};*/
 		can0_global: can0-global@c1420000 {
-			clocks = <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>;
+			clocks = <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>/*,
+				 <&scmi_clk R8A78000_CLK_CANFD0>*/;
+
+			can0: can0 {
+				channel = <0>;
+				interrupts = <GIC_SPI 831 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
 		};
 	};
 };

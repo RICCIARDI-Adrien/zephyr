@@ -357,6 +357,11 @@
 			reg = <0xc1420000 0x40000>; // TEST pour 20000
 			interrupt-parent = <&gic>;
 			status = "disabled";
+
+			can0: can0 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
 		};
 	};
 };
