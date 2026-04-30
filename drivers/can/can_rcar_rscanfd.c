@@ -116,6 +116,13 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 
 #define RSCANFD_CAN_CLOCK_RATE 80000000
 
+struct can_rcar_rscanfd_global_cfg {
+	uint32_t reg;
+	const struct device *global_clock_dev;
+	// TODO utiliser API clock générique
+	clock_control_subsys_t global_clk;
+};
+
 struct can_rscanfd_cfg {
 	const struct can_driver_config common;
 	uint32_t reg_addr;
@@ -329,8 +336,7 @@ static DEVICE_API(can, can_rscanfd_driver_api) = {
 
 static int can_rcar_rscanfd_global_init(const struct device *dev)
 {
-#if 0
-	const struct can_rscanfd_cfg *config = dev->config;
+	const struct can_rcar_rscanfd_global_cfg *config = dev->config;
 	//struct can_rcar_data *data = dev->data;
 	//struct can_timing timing = { 0 };
 	int ret;
@@ -356,17 +362,17 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 		return -ENODEV;
 	}*/
 
-	if (!device_is_ready(config->clock_dev)) {
+	if (!device_is_ready(config->global_clock_dev)) {
 		LOG_ERR("Clock control device is not ready.");
 		return -ENODEV;
 	}
 
 	/* Configure dt provided device signals when available */
-	ret = pinctrl_apply_state(config->pcfg, PINCTRL_STATE_DEFAULT);
+	/*ret = pinctrl_apply_state(config->pcfg, PINCTRL_STATE_DEFAULT);
 	if (ret != 0) {
 		LOG_ERR("Failed to apply the pinctrl state.");
 		return ret;
-	}
+	}*/
 
 	/* Reset the registers */
 	/*printk("[%s:%d] config->clock_dev=%p, config->clk=%p\n", __func__, __LINE__, config->clock_dev, config->clk);
@@ -376,45 +382,46 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 		return ret;
 	}*/
 
-	ret = clock_control_on(config->clock_dev, config->clk);
+	ret = clock_control_on(config->global_clock_dev, config->global_clk);
 	if (ret != 0) {
-		LOG_ERR("Failed to turn the clock on.");
+		LOG_ERR("Failed to turn the global clock on.");
 		return ret;
 	}
 
 	// TEST
 	{
 		uint32_t rate;
-		ret = clock_control_get_rate(config->clock_dev, config->clk, &rate);
+		ret = clock_control_get_rate(config->global_clock_dev, config->global_clk, &rate);
 		if (ret != 0) printk("[%s:%d] err rate clock %d\n",  __func__, __LINE__, ret);
 		else printk("[%s:%d] rate clock avant %u\n",  __func__, __LINE__, rate);
 	}
 
 	/* Make sure that the clock is fast enough for 8Mbit/s CAN-FD */
-	ret = clock_control_set_rate(config->clock_dev, config->clk,
+	ret = clock_control_set_rate(config->global_clock_dev, config->global_clk,
 				     (clock_control_subsys_rate_t)RSCANFD_CAN_CLOCK_RATE);
 	if (ret != 0) {
-		LOG_ERR("Failed to set the clock rate to %u Hz.", RSCANFD_CAN_CLOCK_RATE);
+		LOG_ERR("Failed to set the global clock rate to %u Hz.", RSCANFD_CAN_CLOCK_RATE);
 		return ret;
 	}
 
 	// TEST
 	{
 		uint32_t rate;
-		ret = clock_control_get_rate(config->clock_dev, config->clk, &rate);
+		ret = clock_control_get_rate(config->global_clock_dev, config->global_clk, &rate);
 		if (ret != 0) printk("[%s:%d] err rate clock %d\n",  __func__, __LINE__, ret);
 		else printk("[%s:%d] rate clock apres %u\n",  __func__, __LINE__, rate);
 	}
 
 	/* Wait for the CAN RAM initialization to terminate */
 	printk("[%s:%d] avant init RAM\n",  __func__, __LINE__);
-	ret = can_rscanfd_busy_wait(config->reg_addr + RCAR_CAN_CFDC0STS, RCAR_CAN_GRAMINIT_CSLPSTS, 0);
+	ret = can_rscanfd_busy_wait(config->reg + RCAR_CAN_CFDC0STS, RCAR_CAN_GRAMINIT_CSLPSTS, 0);
 	if (ret != 0) {
 		LOG_ERR("Internal RAM initialization took too long.");
 		return ret;
 	}
 	printk("[%s:%d] apres init RAM\n",  __func__, __LINE__);
 
+#if 0
 	/* The CAN module registers can be configured only in reset mode */
 	ret = can_rscanfd_enter_reset_mode(config/*, false*/);
 	if (ret != 0) {
@@ -590,12 +597,27 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 DT_INST_FOREACH_STATUS_OKAY(CAN_RSCANFD_INIT)
 #endif
 
+/*
+ * The CAN controller.
+ */
+#undef DT_DRV_COMPAT
+#define DT_DRV_COMPAT renesas_rcar_rscanfd_global
+
 #define CAN_RCAR_RSCANFD_GLOBAL_INIT(n) \
-	DEVICE_DT_DEFINE(n, can_rcar_rscanfd_global_init, NULL, NULL,    \
-			 NULL, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE,   \
+	static const struct can_rcar_rscanfd_global_cfg can_rcar_rscanfd_global_cfg_##n = { \
+		.reg = DT_INST_REG_ADDR(n), \
+		.global_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 0, name), \
+		.global_clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)) \
+	}; \
+	DEVICE_DT_INST_DEFINE(n, can_rcar_rscanfd_global_init, \
+			 NULL, \
+			 NULL, \
+			 &can_rcar_rscanfd_global_cfg_##n, \
+			 POST_KERNEL, \
+			 CONFIG_KERNEL_INIT_PRIORITY_DEVICE,   \
 			 NULL);
 
-DT_FOREACH_STATUS_OKAY(renesas_rcar_rscanfd_global, CAN_RCAR_RSCANFD_GLOBAL_INIT);
+DT_INST_FOREACH_STATUS_OKAY(CAN_RCAR_RSCANFD_GLOBAL_INIT);
 
 /* Make sure that the initialization order will be respected */
 BUILD_ASSERT(CONFIG_CLOCK_CONTROL_INIT_PRIORITY < CONFIG_KERNEL_INIT_PRIORITY_DEVICE,
