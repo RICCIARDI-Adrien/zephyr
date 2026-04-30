@@ -346,9 +346,17 @@
 			status = "disabled";
 		};
 
-		can0: can@c1420000 {
+		/*can0: can@c1420000 {
+			//compatible = "renesas,rcar-rscanfd";
 			compatible = "renesas,rcar-can";
 			reg = <0xc1420000 0x40000>; // TEST pour 20000
+		};*/
+
+		can0_global: can0-global@c1420000 {
+			compatible = "renesas,rcar-rscanfd-global";
+			reg = <0xc1420000 0x40000>; // TEST pour 20000
+			interrupt-parent = <&gic>;
+			status = "disabled";
 		};
 	};
 };
