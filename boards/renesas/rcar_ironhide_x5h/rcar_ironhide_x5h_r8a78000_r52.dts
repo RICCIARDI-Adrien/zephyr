@@ -18,7 +18,9 @@
 		zephyr,sram = &sram0;
 		zephyr,console = &hscif1;
 		zephyr,shell-uart = &hscif1;
-		zephyr,canbus = &can0;
+		// TEST
+		//zephyr,canbus = &can0;
+		zephyr,canbus = &can0_global;
 	};
 
 	aliases {
@@ -108,9 +110,13 @@
 	clock-frequency = <I2C_BITRATE_FAST>;
 };
 
-&can0 {
+/*&can0 {
 	pinctrl-0 = <&can0_rx_default
 		     &can0_tx_default>;
 	pinctrl-names = "default";
+	status = "okay";
+};*/
+
+&can0_global {
 	status = "okay";
 };
