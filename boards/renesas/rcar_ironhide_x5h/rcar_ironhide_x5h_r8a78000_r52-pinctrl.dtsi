@@ -15,6 +15,22 @@
 		pin = <PIN_CAN0TX FUNC_CAN0TX>;
 	};
 
+	can1_rx_default: can1_rx_default {
+		pin = <PIN_CAN1RX_INTP1 FUNC_CAN1RX_INTP1>;
+	};
+
+	can1_tx_default: can1_tx_default {
+		pin = <PIN_CAN1TX FUNC_CAN1TX>;
+	};
+
+	can5_rx_default: can5_rx_default {
+		pin = <PIN_CAN5RX_INTP5 FUNC_CAN5RX_INTP5>;
+	};
+
+	can5_tx_default: can5_tx_default {
+		pin = <PIN_CAN5TX FUNC_CAN5TX>;
+	};
+
 	hscif1_data_tx_default: hscif1_data_tx_default {
 		pin = <PIN_HTX1 FUNC_HTX1>;
 	};
