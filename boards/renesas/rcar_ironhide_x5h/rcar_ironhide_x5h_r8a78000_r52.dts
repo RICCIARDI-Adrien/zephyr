@@ -118,3 +118,17 @@
 	pinctrl-names = "default";
 	status = "okay";
 };
+
+&can1 {
+	pinctrl-0 = <&can1_rx_default
+		     &can1_tx_default>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&can5 {
+	pinctrl-0 = <&can5_rx_default
+		     &can5_tx_default>;
+	pinctrl-names = "default";
+	//status = "okay";
+};
