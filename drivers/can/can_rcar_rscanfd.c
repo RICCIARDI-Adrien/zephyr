@@ -29,17 +29,17 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 #define RCAR_CAN_CFDC0NCFG_NTSEG2_MASK 0xFF
 #define RCAR_CAN_CFDC0NCFG_NTSEG2_SHIFT 25
 
-/* Channel 0 Control Register */
+/* Channel n Control Register */
 #define RCAR_CAN_CFDCNCTR 0x0004
-/* Channel 0 Control Register bits */
+/* Channel n Control Register bits */
 #define RCAR_CAN_CFDCNCTR_CHMDC_MASK 0x03
 #define RCAR_CAN_CFDCNCTR_CHMDC_SHIFT 0
 #define RCAR_CAN_CFDCNCTR_CHMDC_CHANNEL_OPERATION_REQUEST 0
 #define RCAR_CAN_CFDCNCTR_CHMDC_CHANNEL_RESET_REQUEST 0x01
 
-/* Channel 0 Status Register */
+/* Channel n Status Register */
 #define RCAR_CAN_CFDCNSTS 0x0008
-/* Channel 0 Status Register bits */
+/* Channel n Status Register bits */
 #define RCAR_CAN_GRAMINIT_CSLPSTS BIT(3)
 #define RCAR_CAN_CFDCNSTS_CSLPSTS BIT(2)
 #define RCAR_CAN_CFDCNSTS_CRSTSTS BIT(0)
@@ -59,9 +59,14 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 
 /* Global Acceptance Filter List Entry Control Register */
 #define RCAR_CAN_CFDGAFLECTR 0x0098
+#define RCAR_CAN_CFDGAFLECTR_AFLDAE BIT(8)
 
-/* Global Acceptance Filter List Configuration Register 0 */
-#define RCAR_CAN_CFDGAFLCFG0 0x009C
+/* Global Acceptance Filter List Configuration Register n */
+#define RCAR_CAN_CFDGAFLCFGN 0x009C
+/* Global Acceptance Filter List Configuration Register n bits */
+#define RCAR_CAN_CFDGAFLCFGN_RNC_CHANNEL_MASK 0x001F
+#define RCAR_CAN_CFDGAFLCFGN_RNC_CHANNEL_EVEN_SHIFT 16
+#define RCAR_CAN_CFDGAFLCFGN_RNC_CHANNEL_ODD_SHIFT 0
 
 /* RX Message Buffer Number Register */
 #define RCAR_CAN_CFDRMNB 0x00AC
@@ -97,17 +102,17 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 /* Common FIFO Pointer Control Register 0 */
 #define RCAR_CAN_CFDCFPCTR0 0x0240
 
-/* Global Acceptance Filter List ID Register 1 */
-#define RCAR_CAN_CFDGAFLID1 0x1800
+/* Global Acceptance Filter List ID Register N */
+#define RCAR_CAN_CFDGAFLIDN 0x1800
 
-/* Global Acceptance Filter List Mask Register 1 */
-#define RCAR_CAN_CFDGAFLM1 0x1804
+/* Global Acceptance Filter List Mask Register N */
+#define RCAR_CAN_CFDGAFLMN 0x1804
 
-/* Global Acceptance Filter List Pointer 0 Register 1 */
-#define RCAR_CAN_CFDGAFLP01 0x1808
+/* Global Acceptance Filter List Pointer 0 Register N */
+#define RCAR_CAN_CFDGAFLP0N 0x1808
 
-/* Global Acceptance Filter List Pointer 1 Register 1 */
-#define RCAR_CAN_CFDGAFLP11 0x180C
+/* Global Acceptance Filter List Pointer 1 Register N */
+#define RCAR_CAN_CFDGAFLP1N 0x180C
 
 /* Common FIFO Access Message Buffer Component */
 #define RCAR_CAN_CFDCFMBCP0 0x6400
@@ -229,6 +234,53 @@ static int can_rcar_rscanfd_leave_sleep_mode(const struct can_rcar_rscanfd_cfg *
 	printk("[%s:%d] entry RCAR_CAN_CFDCNSTS apres = 0x%08X\n", __func__, __LINE__, sys_read32(base_addr + RCAR_CAN_CFDCNSTS));
 
 	return 0;
+}
+
+/**
+ * TODO
+ * Configure the rules table by creating one rule that matches them all (reception frames).
+ * The reception filters are currently implemented in software.
+ */
+static void can_rcar_rscanfd_configure_acceptance_filter_list(const struct can_rcar_rscanfd_cfg *config)
+{
+	uint32_t addr, val, shift;
+
+	/*
+	 * Enable write access for the page 0 (set the page index 0 value in the same time).
+	 * As all channels will use a single rule, only the first page is needed.
+	 */
+	sys_write32(RCAR_CAN_CFDGAFLECTR_AFLDAE, config->reg + RCAR_CAN_CFDGAFLECTR);
+
+	/* There are two consecutive channel rules per CFDGAFLCFGn register */
+	addr = config->reg + RCAR_CAN_CFDGAFLCFGN + (config->channel / 2);
+	/* Address the correct channel within the register */
+	val = sys_read32(addr);
+	printk("[%s:%d] RCAR_CAN_CFDGAFLCFG%d avant = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(addr));
+	if (config->channel & 1) { /* Odd channel */
+		shift = RCAR_CAN_CFDGAFLCFGN_RNC_CHANNEL_ODD_SHIFT;
+	}
+	else {
+		shift = RCAR_CAN_CFDGAFLCFGN_RNC_CHANNEL_EVEN_SHIFT;
+	}
+	val &= ~(RCAR_CAN_CFDGAFLCFGN_RNC_CHANNEL_MASK << shift);
+	/* Configure one rule for the channel */
+	val |= 1 << shift;
+	sys_write32(val, addr);
+	printk("[%s:%d] RCAR_CAN_CFDGAFLCFG%d apres = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(addr));
+
+	/* A page contains 16 entries, with a 4-byte register per entry */
+	addr = config->reg + (config->channel * 4);
+	/* Clear the CAN ID as it won't be taken into account by the mask register */
+	sys_write32(0, addr + RCAR_CAN_CFDGAFLIDN);
+	/* Accept all received CAN frames */
+	sys_write32(0, addr + RCAR_CAN_CFDGAFLMN);
+	/* Disable the DLC check */
+	sys_write32(0, addr + RCAR_CAN_CFDGAFLP0N);
+	/* Use the RX FIFO 0 as target for reception */
+	sys_write32(0x00000001, addr + RCAR_CAN_CFDGAFLP1N); // TODO macro
+
+	/* Disable write access for page 0 */
+	sys_write32(0, config->reg + RCAR_CAN_CFDGAFLECTR);
 }
 
 static int can_rscanfd_get_capabilities(const struct device *dev, can_mode_t *cap)
@@ -383,6 +435,8 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 	if (ret != 0) {
 		return ret;
 	}
+
+	can_rcar_rscanfd_configure_acceptance_filter_list(config);
 
 	return 0;
 }
@@ -563,24 +617,6 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	}
 
 #ifdef CONFIG_SOC_SERIES_RCAR_GEN5
-	/*
-	 * Configure the rules table by creating one rule that matches them all (reception frames)
-	 */
-	/* Enable write access for page 0 */
-	sys_write32(1 << 8, config->reg_addr + RCAR_CAN_CFDGAFLECTR);
-	/* Configure one rule for channel 0 */
-	sys_write32(1 << 16, config->reg_addr + RCAR_CAN_CFDGAFLCFG0);
-	/* Do not set IDs as they won't be taken into account by the mask register */
-	sys_write32(0, config->reg_addr + RCAR_CAN_CFDGAFLID1);
-	/* Accept all received CAN frames */
-	sys_write32(0, config->reg_addr + RCAR_CAN_CFDGAFLM1);
-	/* Disable DLC check */
-	sys_write32(0, config->reg_addr + RCAR_CAN_CFDGAFLP01);
-	/* Use RX FIFO 0 as target for reception */
-	sys_write32(0x00000001, config->reg_addr + RCAR_CAN_CFDGAFLP11);
-	/* Disable write access for page 0 */
-	sys_write32(0, config->reg_addr + RCAR_CAN_CFDGAFLECTR);
-
 	/* Disable the reception message buffers as FIFO is used instead */
 	sys_write32(0, config->reg_addr + RCAR_CAN_CFDRMNB);
 

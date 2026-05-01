@@ -245,6 +245,16 @@
 				channel = <0>;
 				interrupts = <GIC_SPI 831 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 			};
+
+			can1: can1 {
+				channel = <1>;
+				interrupts = <GIC_SPI 831 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>; // TODO
+			};
+
+			can5: can5 {
+				channel = <5>;
+				interrupts = <GIC_SPI 831 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>; // TODO
+			};
 		};
 	};
 };

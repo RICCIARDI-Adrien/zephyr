@@ -362,6 +362,16 @@
 				compatible = "renesas,rcar-rscanfd";
 				status = "disabled";
 			};
+
+			can1: can1 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can5: can5 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
 		};
 	};
 };
