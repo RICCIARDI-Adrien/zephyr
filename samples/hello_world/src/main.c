@@ -14,21 +14,25 @@ int main(void)
 	int ret, cnt = 1;
 	struct can_frame frame;
 
-	printf("Hello World CAN bordel! %s\n", CONFIG_BOARD_TARGET);
+	printk("Hello World CAN bordel! %s\n", CONFIG_BOARD_TARGET);
 
-	// TEST
-	k_sleep(K_FOREVER);
+	ret = can_set_mode(can_dev, CAN_MODE_NORMAL);
+	if (ret != 0)
+	{
+		printk("err can_set_mode() %d.\n", ret);
+		return 0;
+	}
 
 	ret = can_start(can_dev);
 	if (ret != 0)
 	{
-		printf("err can_start() %d.\n", ret);
+		printk("err can_start() %d.\n", ret);
 		return 0;
 	}
 
 	while (1)
 	{
-		printf("Envoi trame %d\n", cnt);
+		printk("Envoi trame %d\n", cnt);
 		cnt++;
 
 		frame.id = 0x2CA;
@@ -39,10 +43,10 @@ int main(void)
 		ret = can_send(can_dev, &frame, K_FOREVER, NULL, NULL);
 		if (ret != 0)
 		{
-			printf("err can_send() %d.\n", ret);
+			printk("err can_send() %d.\n", ret);
 			return 0;
 		}
-		printf("\033[32mTrame envoyee\033[0m\n");
+		printk("\033[32mTrame envoyee\033[0m\n");
 
 		k_msleep(2000);
 	}
