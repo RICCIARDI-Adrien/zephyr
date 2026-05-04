@@ -144,7 +144,11 @@ struct can_rcar_rscanfd_global_cfg {
 	// TODO utiliser API clock générique
 	clock_control_subsys_t global_clk;
 	clock_control_subsys_t module_clk;
+	uint32_t num_enabled_channels;
 };
+
+/*struct can_rcar_rscanfd_global_data {
+	uint32_t enabled*/
 
 struct can_rcar_rscanfd_cfg {
 	const struct can_driver_config common;
@@ -247,7 +251,23 @@ static int can_rcar_rscanfd_enter_halt_mode(const struct can_rcar_rscanfd_cfg *c
 	return 0;
 }
 
-static int can_rcar_rscanfd_leave_sleep_mode(const struct can_rcar_rscanfd_cfg *config)
+/**
+ * TODO
+ * @note The operation state is applied at controller level, impacting all channels.
+ */
+static int can_rcar_rscanfd_enter_operation_mode(const struct can_rcar_rscanfd_global_cfg *config)
+{
+	uint32_t val;
+
+	val = sys_read32(config->reg + RCAR_CAN_CFDGCTR);
+	val &= ~(RCAR_CAN_CFDGCTR_GMDC_MASK << RCAR_CAN_CFDGCTR_GMDC_SHIFT);
+	val |= RCAR_CAN_CFDGCTR_GMDC_GLOBAL_OPERATION_MODE_REQUEST << RCAR_CAN_CFDGCTR_GMDC_SHIFT;
+	sys_write32(val, config->reg + RCAR_CAN_CFDGCTR);
+
+	return can_rscanfd_busy_wait(config->reg + RCAR_CAN_CFDGSTS, RCAR_CAN_CFDGSTS_GRSTSTS, 0);
+}
+
+static int can_rcar_rscanfd_channel_leave_sleep_mode(const struct can_rcar_rscanfd_cfg *config)
 {
 	uint32_t base_addr = config->reg + (config->channel * 16);
 	int ret;
@@ -568,13 +588,15 @@ static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 
 static int can_rcar_rscanfd_init(const struct device *dev)
 {
+	static uint32_t enabled_channels_count = 0;
 	const struct can_rcar_rscanfd_cfg *config = dev->config;
+	const struct can_rcar_rscanfd_global_cfg *global_config = config->global_dev->config;
 	struct can_timing timing /*= {0}*/;
 	int ret;
 
 	printk("[%s:%d] entry DRIVER CUSTOM CHANNEL %d\n", __func__, __LINE__, config->channel);
 
-	ret = can_rcar_rscanfd_leave_sleep_mode(config);
+	ret = can_rcar_rscanfd_channel_leave_sleep_mode(config);
 	if (ret != 0) {
 		return ret;
 	}
@@ -600,6 +622,17 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 	ret = can_rcar_rscanfd_set_mode(dev, CAN_MODE_NORMAL);
 	if (ret) {
 		return ret;
+	}
+
+	/* Switch the controller to operation mode when all channels are initialized */
+	enabled_channels_count++;
+	if (enabled_channels_count == global_config->num_enabled_channels) {
+		ret = can_rcar_rscanfd_enter_operation_mode(global_config);
+		if (ret) {
+			LOG_ERR("Failed to put the controller in operation mode.");
+			return ret;
+		}
+		LOG_DBG("All channels were successfully initialized.");
 	}
 
 	return 0;
@@ -865,6 +898,7 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),				\
 		.global_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 0, name),	\
 		.module_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 1, name),	\
+		.num_enabled_channels = DT_INST_CHILD_NUM_STATUS_OKAY(n)			\
 	};											\
 	DEVICE_DT_INST_DEFINE(n, can_rcar_rscanfd_global_init,					\
 			 NULL,									\
