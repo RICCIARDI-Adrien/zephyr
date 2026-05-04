@@ -17,17 +17,17 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 
 // TODO faire "enum" par canal ?
 
-/* Channel 0 Nominal Bitrate Configuration Register */
-#define RCAR_CAN_CFDC0NCFG 0x0000
-/* Channel 0 Nominal Bitrate Configuration Register bits */
-#define RCAR_CAN_CFDC0NCFG_NBRP_MASK 0x3FF
-#define RCAR_CAN_CFDC0NCFG_NBRP_SHIFT 0
-#define RCAR_CAN_CFDC0NCFG_NSJW_MASK 0x07F
-#define RCAR_CAN_CFDC0NCFG_NSJW_SHIFT 10
-#define RCAR_CAN_CFDC0NCFG_NTSEG1_MASK 0xFF
-#define RCAR_CAN_CFDC0NCFG_NTSEG1_SHIFT 17
-#define RCAR_CAN_CFDC0NCFG_NTSEG2_MASK 0xFF
-#define RCAR_CAN_CFDC0NCFG_NTSEG2_SHIFT 25
+/* Channel N Nominal Bitrate Configuration Register */
+#define RCAR_CAN_CFDCNNCFG 0x0000
+/* Channel N Nominal Bitrate Configuration Register bits */
+#define RCAR_CAN_CFDCNNCFG_NBRP_MASK 0x3FF
+#define RCAR_CAN_CFDCNNCFG_NBRP_SHIFT 0
+#define RCAR_CAN_CFDCNNCFG_NSJW_MASK 0x07F
+#define RCAR_CAN_CFDCNNCFG_NSJW_SHIFT 10
+#define RCAR_CAN_CFDCNNCFG_NTSEG1_MASK 0xFF
+#define RCAR_CAN_CFDCNNCFG_NTSEG1_SHIFT 17
+#define RCAR_CAN_CFDCNNCFG_NTSEG2_MASK 0xFF
+#define RCAR_CAN_CFDCNNCFG_NTSEG2_SHIFT 25
 
 /* Channel n Control Register */
 #define RCAR_CAN_CFDCNCTR 0x0004
@@ -36,12 +36,14 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 #define RCAR_CAN_CFDCNCTR_CHMDC_SHIFT 0
 #define RCAR_CAN_CFDCNCTR_CHMDC_CHANNEL_OPERATION_REQUEST 0
 #define RCAR_CAN_CFDCNCTR_CHMDC_CHANNEL_RESET_REQUEST 0x01
+#define RCAR_CAN_CFDCNCTR_CHMDC_CHANNEL_HALT_REQUEST 0x01
 
 /* Channel n Status Register */
 #define RCAR_CAN_CFDCNSTS 0x0008
 /* Channel n Status Register bits */
 #define RCAR_CAN_GRAMINIT_CSLPSTS BIT(3)
 #define RCAR_CAN_CFDCNSTS_CSLPSTS BIT(2)
+#define RCAR_CAN_CFDCNSTS_CHLTSTS BIT(1)
 #define RCAR_CAN_CFDCNSTS_CRSTSTS BIT(0)
 
 /* Global IP Version Register */
@@ -205,16 +207,44 @@ static inline int can_rscanfd_busy_wait(mem_addr_t reg, uint32_t bit_mask, bool 
 		k_sleep(K_USEC(10));
 	}
 
-	LOG_DBG("Busy wait time out. reg=0x%08lX, bit_mask=%08X, expect_one=%d", reg, bit_mask, expect_one);
+	LOG_DBG("Busy wait timed out. reg=0x%08lX, bit_mask=%08X, expect_one=%d", reg, bit_mask, expect_one);
 	return -EAGAIN;
 }
 
+/**
+ * TODO
+ * @note The reset state is applied at controller level, impacting all channels.
+ */
 static int can_rcar_rscanfd_enter_reset_mode(const struct can_rcar_rscanfd_global_cfg *config/*, bool force*/)
 {
 	/* Request the global reset mode, resetting all other fields in the same time */
 	sys_write32(RCAR_CAN_CFDGCTR_GMDC_GLOBAL_RESET_MODE_REQUEST, config->reg + RCAR_CAN_CFDGCTR);
 
 	return can_rscanfd_busy_wait(config->reg + RCAR_CAN_CFDGSTS, RCAR_CAN_CFDGSTS_GRSTSTS, 1);
+}
+
+/**
+ * TODO
+ * @note The halt state is applied at the channel level, not impacting the other channels.
+ */
+static int can_rcar_rscanfd_enter_halt_mode(const struct can_rcar_rscanfd_cfg *config)
+{
+#if 0
+	uint32_t base_addr, val;
+
+	// TODO
+
+	/* The relevant registers are 4-byte wide and consecutive */
+	base_addr = config->reg + (config->channel * 4);
+
+	val = sys_read32(base_addr + RCAR_CAN_CFDCNCTR);
+	val &= ~(RCAR_CAN_CFDCNCTR_CHMDC_MASK << RCAR_CAN_CFDCNCTR_CHMDC_SHIFT);
+	val |= RCAR_CAN_CFDCNCTR_CHMDC_CHANNEL_HALT_REQUEST << RCAR_CAN_CFDCNCTR_CHMDC_SHIFT;
+	sys_write32(val, base_addr + RCAR_CAN_CFDCNCTR);
+
+	return can_rscanfd_busy_wait(base_addr + RCAR_CAN_CFDCNSTS, RCAR_CAN_CFDCNSTS_CHLTSTS, 1);
+#endif
+	return 0;
 }
 
 static int can_rcar_rscanfd_leave_sleep_mode(const struct can_rcar_rscanfd_cfg *config)
@@ -298,27 +328,75 @@ static void can_rcar_rscanfd_configure_acceptance_filter_list(const struct can_r
 
 static void can_rcar_rscanfd_configure_fifo(const struct can_rcar_rscanfd_cfg *config)
 {
-	uint32_t channel_addr;
+	uint32_t base_addr;
 
 	/* All relevant registers are 32-bit and consecutive */
-	channel_addr = config->reg + (config->channel * 4);
+	base_addr = config->reg + (config->channel * 4);
 
 	/* Dedicate a RX FIFO to the channel */
 	sys_write32(RCAR_CAN_CFDRFCCN_RFDC_DEPTH_64 << RCAR_CAN_CFDRFCCN_RFDC_SHIFT |
 		RCAR_CAN_CFDRFCCN_RFPLS_SIZE_64 << RCAR_CAN_CFDRFCCN_RFPLS_SHIFT |
 		RCAR_CAN_CFDRFCCN_RFE_DISABLE << RCAR_CAN_CFDRFCCN_RFE_SHIFT,
-		channel_addr + RCAR_CAN_CFDRFCCN); // TODO Message lost Error Interrupt Enable ? RX FIFO Interrupt Mode ? etc int
+		base_addr + RCAR_CAN_CFDRFCCN); // TODO Message lost Error Interrupt Enable ? RX FIFO Interrupt Mode ? etc int
 
 	/* Dedicate a Common FIFO for transmission */
 	sys_write32(RCAR_CAN_CFDCFCCN_CFDC_DEPTH_64 << RCAR_CAN_CFDCFCCN_CFDC_SHIFT |
 		RCAR_CAN_CFDCFCCN_CFM_TX << RCAR_CAN_CFDCFCCN_CFM_SHIFT |
 		RCAR_CAN_CFDCFCCN_CFPLS_SIZE_64 << RCAR_CAN_CFDCFCCN_CFPLS_SHIFT |
 		RCAR_CAN_CFDCFCCN_CFE_DISABLE << RCAR_CAN_CFDCFCCN_CFE_SHIFT,
-		channel_addr + RCAR_CAN_CFDCFCCN); // TODO transmission delay dans param DT ? int
+		base_addr + RCAR_CAN_CFDCFCCN); // TODO transmission delay dans param DT ? int
 
 	/* Allow transmitting from the Common FIFO */
 	sys_write32(RCAR_CAN_CFDCFCCEN_CFBME_ENABLE << RCAR_CAN_CFDCFCCEN_CFBME_SHIFT,
-		channel_addr + RCAR_CAN_CFDCFCCEN);
+		base_addr + RCAR_CAN_CFDCFCCEN);
+}
+
+/**
+ * TODO
+ *
+ * @note The channel must already be in Reset or Halt state.
+ */
+static int can_rcar_rscanfd_configure_timing(const struct can_rcar_rscanfd_cfg *config,
+					     const struct can_timing *timing)
+{
+	uint32_t base_addr;
+
+	LOG_DBG("Set timing for channel %u, sjw=%u, prop_seg=%u, seg1=%u, seg2=%u, presc=%u.",
+		config->channel, timing->sjw, timing->prop_seg, timing->phase_seg1, timing->phase_seg2,
+		timing->prescaler);
+
+	/* Each channel is handled by a group of four 4-byte registers */
+	base_addr = config->reg + (config->channel * 16);
+
+	// TODO prop seg
+	if ((timing->sjw < 1) || (timing->sjw > 128)) {
+		LOG_DBG("Invalid synchronisation jump width setting %u.\n", timing->sjw);
+		return -EINVAL;
+	}
+	//if ((timing->prop_seg
+	if ((timing->phase_seg1 < 2) || (timing->phase_seg1 > 256)) {
+		LOG_DBG("Invalid phase segment 1 setting %u.\n", timing->phase_seg1);
+		return -EINVAL;
+	}
+	if ((timing->phase_seg2 < 2) || (timing->phase_seg2 > 128)) {
+		LOG_DBG("Invalid phase segment 2 setting %u.\n", timing->phase_seg1);
+		return -EINVAL;
+	}
+	if (timing->prescaler > 1024) {
+		LOG_DBG("Invalid prescaler setting %u.\n", timing->prescaler);
+		return -EINVAL;
+	}
+	sys_write32((timing->phase_seg1 - 1) << RCAR_CAN_CFDCNNCFG_NTSEG1_SHIFT |
+		(timing->phase_seg2 - 1) << RCAR_CAN_CFDCNNCFG_NTSEG2_SHIFT |
+		timing->sjw << RCAR_CAN_CFDCNNCFG_NSJW_SHIFT |
+		(timing->prescaler - 1) << RCAR_CAN_CFDCNNCFG_NBRP_SHIFT,
+		base_addr + RCAR_CAN_CFDCNNCFG);
+
+	// TODO CFDCnCTR
+
+	printk("[%s:%d] CFDCnNCFG %u = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(base_addr + RCAR_CAN_CFDCNNCFG));
+
+	return 0;
 }
 
 static int can_rscanfd_get_capabilities(const struct device *dev, can_mode_t *cap)
@@ -386,24 +464,34 @@ static int can_rscanfd_stop(const struct device *dev)
 	return 0;
 }
 
-static int can_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
+static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 {
-	printk("[%s:%d] entry\n", __func__, __LINE__);
-	// TODO
+	const struct can_rcar_rscanfd_cfg *config = dev->config;
+
+	LOG_DBG("Set mode %u for channel %u.", mode, config->channel);
+
+	// TODO manual mode
+
+	// TODO check supported modes
+
+	// TODO variable mode dans data dev
+
 	return 0;
 }
 
 static int can_rcar_rscanfd_set_timing(const struct device *dev, const struct can_timing *timing)
 {
 	const struct can_rcar_rscanfd_cfg *config = dev->config;
-
-	LOG_DBG("Set timing for channel %u, sjw=%u, prop_seg=%u, phase_seg1=%u, phase_seg2=%u, presc=%u.",
-		config->channel, timing->sjw, timing->prop_seg, timing->phase_seg1, timing->phase_seg2,
-		timing->prescaler);
+	int ret;
 
 	// TODO verif init OK ?
 
 	// TODO reset mode, avec
+
+	ret = can_rcar_rscanfd_enter_halt_mode(config); // TODO
+	if (ret != 0) {
+		return -EIO;
+	}
 
 	// TODO
 	return 0;
@@ -431,7 +519,7 @@ static int can_rcar_rscanfd_get_core_clock(const struct device *dev, uint32_t *r
 	const struct can_rcar_rscanfd_cfg *config = dev->config;
 	const struct can_rcar_rscanfd_global_cfg *global_config = config->global_dev->config;
 
-	printk("[%s:%d] config->clk=%p\n", __func__, __LINE__, global_config->global_clk);
+	//printk("[%s:%d] config->clk=%p\n", __func__, __LINE__, global_config->global_clk);
 	return clock_control_get_rate(global_config->clock_dev, global_config->global_clk, rate);
 }
 
@@ -449,7 +537,7 @@ static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 	.get_capabilities = can_rscanfd_get_capabilities,
 	.start = can_rscanfd_start,
 	.stop = can_rscanfd_stop,
-	.set_mode = can_rscanfd_set_mode,
+	.set_mode = can_rcar_rscanfd_set_mode,
 	.set_timing = can_rcar_rscanfd_set_timing,
 	.send = can_rscanfd_send,
 	//.add_rx_filter = can_rcar_add_rx_filter,
@@ -481,6 +569,7 @@ static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 static int can_rcar_rscanfd_init(const struct device *dev)
 {
 	const struct can_rcar_rscanfd_cfg *config = dev->config;
+	struct can_timing timing /*= {0}*/;
 	int ret;
 
 	printk("[%s:%d] entry DRIVER CUSTOM CHANNEL %d\n", __func__, __LINE__, config->channel);
@@ -493,6 +582,25 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 	can_rcar_rscanfd_configure_acceptance_filter_list(config);
 
 	can_rcar_rscanfd_configure_fifo(config);
+
+	ret = can_calc_timing(dev, &timing, config->common.bitrate, config->common.sample_point);
+	if (ret < 0) {
+		LOG_ERR("Failed to find a timing for channel %u bit rate %u bit/s (%d).",
+			config->channel, config->common.bitrate, ret);
+		return ret;
+	}
+	//LOG_DBG("Prescaler: %d, TS1: %d, TS2: %d, Sample-point error: %d.",
+	//	timing.prescaler, timing.phase_seg1, timing.phase_seg2, ret); // REDONDANT
+
+	ret = can_rcar_rscanfd_configure_timing(config, &timing);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = can_rcar_rscanfd_set_mode(dev, CAN_MODE_NORMAL);
+	if (ret) {
+		return ret;
+	}
 
 	return 0;
 }
@@ -600,12 +708,12 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	}
 
 	// TEST
-	{
+	/*{
 		uint32_t rate;
 		ret = clock_control_get_rate(config->clock_dev, config->global_clk, &rate);
 		if (ret != 0) printk("[%s:%d] err rate clock %d\n",  __func__, __LINE__, ret);
 		else printk("[%s:%d] rate clock avant %u\n",  __func__, __LINE__, rate);
-	}
+	}*/
 
 	/* Make sure that the clock is fast enough for 8Mbit/s CAN-FD */
 	ret = clock_control_set_rate(config->clock_dev, config->global_clk,
@@ -616,12 +724,12 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	}
 
 	// TEST
-	{
+	/*{
 		uint32_t rate;
 		ret = clock_control_get_rate(config->clock_dev, config->global_clk, &rate);
 		if (ret != 0) printk("[%s:%d] err rate clock %d\n",  __func__, __LINE__, ret);
 		else printk("[%s:%d] rate clock apres %u\n",  __func__, __LINE__, rate);
-	}
+	}*/
 
 	ret = clock_control_on(config->clock_dev, config->module_clk);
 	if (ret != 0) {
