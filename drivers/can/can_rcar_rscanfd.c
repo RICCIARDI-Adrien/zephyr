@@ -135,9 +135,13 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 
 #define RCAR_CAN_FIFO_ACCESS_DATA_REGISTERS_COUNT 16
 
-#define RSCANFD_CAN_CLOCK_RATE 80000000
+#define RCAR_CAN_RSCANFD_MODULE_CLOCK_RATE 80000000
 
-#define RSCANFD_CHANNELS_COUNT 8
+/** The amount of channels per controller. */
+#define RCAR_CAN_RSCANFD_CHANNELS_COUNT 8
+
+/** How many Common FIFO are assigned to each channel. */
+#define RCAR_CAN_RSCANFD_COMMON_FIFO_PER_CHANNEL 3
 
 struct can_rcar_rscanfd_global_cfg {
 	uint32_t reg;
@@ -371,7 +375,7 @@ static void can_rcar_rscanfd_configure_acceptance_filter_list(const struct can_r
 	/* Disable the DLC check */
 	sys_write32(0, addr + RCAR_CAN_CFDGAFLP0N);
 	/* Use a dedicated RX FIFO as target for reception */
-	sys_write32(1 << config->channel, addr + RCAR_CAN_CFDGAFLP1N); // TODO macro
+	sys_write32(1 << config->channel, addr + RCAR_CAN_CFDGAFLP1N);
 
 	/* Disable write access for page 0 */
 	sys_write32(0, config->reg + RCAR_CAN_CFDGAFLECTR);
@@ -381,8 +385,12 @@ static void can_rcar_rscanfd_configure_fifo(const struct can_rcar_rscanfd_cfg *c
 {
 	uint32_t base_addr;
 
-	/* All relevant registers are 32-bit wide and consecutive */
-	base_addr = config->reg + (config->channel * 4);
+	/*
+	 * All relevant registers are 32-bit wide and consecutive.
+	 * We are using the first Common FIFO from the several available for each channel.
+	 */
+	base_addr = config->reg +
+		(config->channel * sizeof(uint32_t) * RCAR_CAN_RSCANFD_COMMON_FIFO_PER_CHANNEL);
 
 	/* Dedicate a RX FIFO to the channel */
 	sys_write32(RCAR_CAN_CFDRFCCN_RFDC_DEPTH_64 << RCAR_CAN_CFDRFCCN_RFDC_SHIFT |
@@ -598,7 +606,7 @@ static int can_rscanfd_send(const struct device *dev, const struct can_frame *fr
 
 	printk("[%s:%d] entry\n", __func__, __LINE__);
 
-	LOG_DBG("Sending %d bytes on %s, ID: 0x%x, ID type: %s, remote frame: %s.",
+	LOG_DBG("Sending %d bytes on %s, ID: 0x%X, ID type: %s, remote frame: %s.",
 		frame->dlc, dev->name, frame->id,
 		(frame->flags & CAN_FRAME_IDE) != 0 ? "extended" : "standard",
 		(frame->flags & CAN_FRAME_RTR) != 0 ? "yes" : "no");
@@ -711,6 +719,10 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 
 	can_rcar_rscanfd_configure_fifo(config);
 
+	// TEST
+	/*if (config->channel == 0) {
+		printk("[%s:%d] init channel 0 seulement\n", __func__, __LINE__);*/
+
 	ret = can_calc_timing(dev, &timing, config->common.bitrate, config->common.sample_point);
 	if (ret < 0) {
 		LOG_ERR("Failed to find a timing for channel %u bit rate %u bit/s (%d).",
@@ -729,6 +741,9 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 	if (ret) {
 		return ret;
 	}
+
+	// TEST
+	//}
 
 	/* Switch the controller to operation mode when all channels are initialized */
 	enabled_channels_count++;
@@ -763,7 +778,7 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 		/*.bus_clk.rate = 40000000, TODO */					\
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n)			\
 	};									\
-	BUILD_ASSERT(DT_INST_PROP(n, channel) < RSCANFD_CHANNELS_COUNT, \
+	BUILD_ASSERT(DT_INST_PROP(n, channel) < RCAR_CAN_RSCANFD_CHANNELS_COUNT, \
 		     "Channel number is invalid."); \
 	/*static struct can_rcar_data can_rcar_data_##n;*/				\
 	\
@@ -859,9 +874,9 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 
 	/* Make sure that the clock is fast enough for 8Mbit/s CAN-FD */
 	ret = clock_control_set_rate(config->clock_dev, config->global_clk,
-				     (clock_control_subsys_rate_t)RSCANFD_CAN_CLOCK_RATE);
+				     (clock_control_subsys_rate_t)RCAR_CAN_RSCANFD_MODULE_CLOCK_RATE);
 	if (ret != 0) {
-		LOG_ERR("Failed to set the global clock rate to %u Hz.", RSCANFD_CAN_CLOCK_RATE);
+		LOG_ERR("Failed to set the global clock rate to %u Hz.", RCAR_CAN_RSCANFD_MODULE_CLOCK_RATE);
 		return ret;
 	}
 
@@ -1012,7 +1027,7 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	DEVICE_DT_INST_DEFINE(n, can_rcar_rscanfd_global_init,					\
 			 NULL,									\
 			 NULL,									\
-			&can_rcar_rscanfd_global_cfg_##n,					\
+			 &can_rcar_rscanfd_global_cfg_##n,					\
 			 POST_KERNEL,								\
 			 CONFIG_KERNEL_INIT_PRIORITY_DEVICE,					\
 			 NULL);
