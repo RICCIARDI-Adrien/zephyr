@@ -381,7 +381,7 @@ static void can_rcar_rscanfd_configure_fifo(const struct can_rcar_rscanfd_cfg *c
 {
 	uint32_t base_addr;
 
-	/* All relevant registers are 32-bit and consecutive */
+	/* All relevant registers are 32-bit wide and consecutive */
 	base_addr = config->reg + (config->channel * 4);
 
 	/* Dedicate a RX FIFO to the channel */
@@ -445,7 +445,7 @@ static int can_rcar_rscanfd_configure_timing(const struct can_rcar_rscanfd_cfg *
 
 	// TODO CFDCnCTR
 
-	printk("[%s:%d] CFDCnNCFG %u = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(base_addr + RCAR_CAN_CFDCNNCFG));
+	//printk("[%s:%d] CFDCnNCFG %u = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(base_addr + RCAR_CAN_CFDCNNCFG));
 
 	return 0;
 }
@@ -465,6 +465,7 @@ static int can_rscanfd_start(const struct device *dev)
 {
 	const struct can_rcar_rscanfd_cfg *config = dev->config;
 	struct can_rcar_rscanfd_data *data = dev->data;
+	uint32_t base_addr, val;
 	int ret;
 
 	// activ FIFOs
@@ -490,7 +491,20 @@ static int can_rscanfd_start(const struct device *dev)
 		return ret;
 	}
 
-	// TODO
+	/* All relevant registers are 32-bit and consecutive */
+	base_addr = config->reg + (config->channel * 4);
+
+	/* The FIFOs can be enabled only when the channel is in operation mode */
+	/* Reception FIFO */
+	val = sys_read32(base_addr + RCAR_CAN_CFDRFCCN);
+	val &= ~(RCAR_CAN_CFDRFCCN_RFE_MASK << RCAR_CAN_CFDRFCCN_RFE_SHIFT);
+	val |= RCAR_CAN_CFDRFCCN_RFE_ENABLE << RCAR_CAN_CFDRFCCN_RFE_SHIFT;
+	sys_write32(val, base_addr + RCAR_CAN_CFDRFCCN);
+	/* Transmission FIFO */
+	val = sys_read32(base_addr + RCAR_CAN_CFDCFCCN);
+	val &= ~(RCAR_CAN_CFDCFCCN_CFE_MASK << RCAR_CAN_CFDCFCCN_CFE_SHIFT);
+	val |= RCAR_CAN_CFDCFCCN_CFE_ENABLE << RCAR_CAN_CFDCFCCN_CFE_SHIFT;
+	sys_write32(val, base_addr + RCAR_CAN_CFDCFCCN);
 
 	data->common.started = true;
 
@@ -579,7 +593,41 @@ static int can_rscanfd_send(const struct device *dev, const struct can_frame *fr
 			    k_timeout_t timeout, can_tx_callback_t callback,
 			    void *user_data)
 {
+	const struct can_rcar_rscanfd_cfg *config = dev->config;
+	struct can_rcar_rscanfd_data *data = dev->data;
+
 	printk("[%s:%d] entry\n", __func__, __LINE__);
+
+	LOG_DBG("Sending %d bytes on %s, ID: 0x%x, ID type: %s, remote frame: %s.",
+		frame->dlc, dev->name, frame->id,
+		(frame->flags & CAN_FRAME_IDE) != 0 ? "extended" : "standard",
+		(frame->flags & CAN_FRAME_RTR) != 0 ? "yes" : "no");
+
+	if (frame->dlc > CAN_MAX_DLC) {
+		LOG_ERR("DLC of %d exceeds maximum (%d).", frame->dlc, CAN_MAX_DLC);
+		return -EINVAL;
+	}
+
+	if ((frame->flags & ~(CAN_FRAME_IDE | CAN_FRAME_RTR)) != 0) {
+		LOG_ERR("Unsupported CAN frame flags 0x%02X.", frame->flags);
+		return -ENOTSUP;
+	}
+
+	if (!data->common.started) {
+		return -ENETDOWN;
+	}
+
+	// TEST
+	sys_write32(0x2CA, config->reg + RCAR_CAN_CFDCFMBCP0);
+	sys_write32(8 << 28, config->reg + RCAR_CAN_CFDCFMBCP0 + 4);
+	sys_write32(0, config->reg + RCAR_CAN_CFDCFMBCP0 + 8);
+	sys_write32(0xBABEB00B, config->reg + RCAR_CAN_CFDCFMBCP0 + 12);
+	sys_write32(0xDEADBEEF, config->reg + RCAR_CAN_CFDCFMBCP0 + 16);
+
+	sys_write32(0xFF, config->reg + RCAR_CAN_CFDCFPCTR0);
+
+	printk("[%s:%d] transmission OK\n", __func__, __LINE__);
+
 	// TODO
 	return 0;
 }
