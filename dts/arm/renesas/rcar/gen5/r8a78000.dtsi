@@ -240,15 +240,16 @@
 		can0_global: can0-global@c1420000 {
 			clocks = <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>,
 				 <&scmi_clk R8A78000_CLK_CANFD0>;
+			//interrupts = <GIC_SPI 831 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 
 			can0: can0 {
 				channel = <0>;
-				interrupts = <GIC_SPI 831 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+				interrupts = <GIC_SPI 832 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 			};
 
 			can1: can1 {
 				channel = <1>;
-				interrupts = <GIC_SPI 831 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>; // TODO
+				interrupts = <GIC_SPI 833 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 			};
 
 			can5: can5 {
