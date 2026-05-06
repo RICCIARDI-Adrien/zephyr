@@ -131,7 +131,30 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 #define RCAR_CAN_CFDGAFLP1N 0x180C
 
 /* Common FIFO Access Message Buffer Component */
-#define RCAR_CAN_CFDCFMBCP0 0x6400
+#define RCAR_CAN_CFDCFMBCP0 0x6400 // TODO virer
+/* Common FIFO Access ID Registers 0 N */
+#define RCAR_CAN_CFDCFID0N 0x6400
+/* Common FIFO Access ID Registers 0 N bits */
+#define RCAR_CAN_CFDCFID0N_CFRTR BIT(31)
+#define RCAR_CAN_CFDCFID0N_CFIDE BIT(30)
+#define RCAR_CAN_CFDCFID0N_CFID_MASK 0x1FFFFFFF
+#define RCAR_CAN_CFDCFID0N_CFID_SHIFT 0
+
+/* Common FIFO Access Pointer Registers 0 N */
+#define RCAR_CAN_CFDCFPTR0N 0x6404
+/* Common FIFO Access Pointer Registers 0 N bits */
+#define RCAR_CAN_CFDCFPTR0N_CFDLC_MASK 0x0F
+#define RCAR_CAN_CFDCFPTR0N_CFDLC_SHIFT 28
+
+/* Common FIFO Access CAN-FD Control/Status Register 0 N */
+#define RCAR_CAN_CFDCFFDCSTS0N 0x6408
+/* Common FIFO Access CAN-FD Control/Status Register 0 N bits */
+#define RCAR_CAN_CFDCFFDCSTS0N_CFFDF BIT(2)
+#define RCAR_CAN_CFDCFFDCSTS0N_CFBRS BIT(1)
+#define RCAR_CAN_CFDCFFDCSTS0N_CFESI BIT(0)
+
+/* Common FIFO Access Data Field 0 Registers 0 N */
+#define RCAR_CAN_CFDCFDF00N 0x640C
 
 #define RCAR_CAN_FIFO_ACCESS_DATA_REGISTERS_COUNT 16
 
@@ -500,7 +523,7 @@ static int can_rscanfd_start(const struct device *dev)
 	}
 
 	/* All relevant registers are 32-bit and consecutive */
-	base_addr = config->reg + (config->channel * 4);
+	base_addr = config->reg + (config->channel * sizeof(uint32_t));
 
 	/* The FIFOs can be enabled only when the channel is in operation mode */
 	/* Reception FIFO */
@@ -603,12 +626,14 @@ static int can_rscanfd_send(const struct device *dev, const struct can_frame *fr
 {
 	const struct can_rcar_rscanfd_cfg *config = dev->config;
 	struct can_rcar_rscanfd_data *data = dev->data;
+	uint32_t base_addr, val, i;
 
 	printk("[%s:%d] entry\n", __func__, __LINE__);
 
-	LOG_DBG("Sending %d bytes on %s, ID: 0x%X, ID type: %s, remote frame: %s.",
-		frame->dlc, dev->name, frame->id,
+	LOG_DBG("Sending %s, ID: 0x%X, ID type: %s, DLC: %u, remote frame: %s.",
+		dev->name, frame->id,
 		(frame->flags & CAN_FRAME_IDE) != 0 ? "extended" : "standard",
+		frame->dlc,
 		(frame->flags & CAN_FRAME_RTR) != 0 ? "yes" : "no");
 
 	if (frame->dlc > CAN_MAX_DLC) {
@@ -617,6 +642,7 @@ static int can_rscanfd_send(const struct device *dev, const struct can_frame *fr
 	}
 
 	if ((frame->flags & ~(CAN_FRAME_IDE | CAN_FRAME_RTR)) != 0) {
+		// TODO
 		LOG_ERR("Unsupported CAN frame flags 0x%02X.", frame->flags);
 		return -ENOTSUP;
 	}
@@ -625,14 +651,51 @@ static int can_rscanfd_send(const struct device *dev, const struct can_frame *fr
 		return -ENETDOWN;
 	}
 
-	// TEST
-	sys_write32(0x2CA, config->reg + RCAR_CAN_CFDCFMBCP0);
-	sys_write32(8 << 28, config->reg + RCAR_CAN_CFDCFMBCP0 + 4);
-	sys_write32(0, config->reg + RCAR_CAN_CFDCFMBCP0 + 8);
-	sys_write32(0xBABEB00B, config->reg + RCAR_CAN_CFDCFMBCP0 + 12);
-	sys_write32(0xDEADBEEF, config->reg + RCAR_CAN_CFDCFMBCP0 + 16);
+	// TODO timestamp
 
-	sys_write32(0xFF, config->reg + RCAR_CAN_CFDCFPCTR0);
+	base_addr = config->reg + (config->channel * 0x180);
+
+	/* ID and flags */
+	val = (frame->id & RCAR_CAN_CFDCFID0N_CFID_MASK) << RCAR_CAN_CFDCFID0N_CFID_SHIFT;
+	if (frame->flags & CAN_FRAME_IDE) {
+		val |= RCAR_CAN_CFDCFID0N_CFIDE;
+	}
+	if (frame->flags & CAN_FRAME_RTR) {
+		val |= RCAR_CAN_CFDCFID0N_CFRTR;
+	}
+	sys_write32(val, base_addr + RCAR_CAN_CFDCFID0N);
+
+	/* DLC and timestamp TODO */
+	sys_write32((frame->dlc & RCAR_CAN_CFDCFPTR0N_CFDLC_MASK) << RCAR_CAN_CFDCFPTR0N_CFDLC_SHIFT,
+		base_addr + RCAR_CAN_CFDCFPTR0N);
+
+	/* CAN-FD settings */
+	val = 0;
+	if (frame->flags & CAN_FRAME_FDF) {
+		val |= RCAR_CAN_CFDCFFDCSTS0N_CFFDF;
+	}
+	if (frame->flags & CAN_FRAME_BRS) {
+		val |= RCAR_CAN_CFDCFFDCSTS0N_CFBRS;
+	}
+	if (frame->flags & CAN_FRAME_ESI) {
+		val |= RCAR_CAN_CFDCFFDCSTS0N_CFESI;
+	}
+	sys_write32(val, base_addr + RCAR_CAN_CFDCFFDCSTS0N);
+
+	/* Data */
+	val = can_dlc_to_bytes(frame->dlc);
+	for (i = 0; i < val; i++) {
+		sys_write8(frame->data[i], base_addr + RCAR_CAN_CFDCFDF00N + i);
+	}
+
+	// TEST
+	/*sys_write32(0x2CA, base_addr + RCAR_CAN_CFDCFID0N);
+	sys_write32(8 << 28, base_addr + RCAR_CAN_CFDCFMBCP0 + 4);
+	sys_write32(0, base_addr + RCAR_CAN_CFDCFMBCP0 + 8);
+	sys_write32(0xBABEB00B, base_addr + RCAR_CAN_CFDCFMBCP0 + 12);
+	sys_write32(0xDEADBEEF, base_addr + RCAR_CAN_CFDCFMBCP0 + 16);*/
+
+	sys_write32(0xFF, base_addr + RCAR_CAN_CFDCFPCTR0);
 
 	printk("[%s:%d] transmission OK\n", __func__, __LINE__);
 
