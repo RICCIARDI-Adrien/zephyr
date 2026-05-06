@@ -99,11 +99,15 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 #define RCAR_CAN_CFDCFCCN_CFDC_SHIFT 21
 #define RCAR_CAN_CFDCFCCN_CFDC_DEPTH_64 0x06
 #define RCAR_CAN_CFDCFCCN_CFDC_DEPTH_128 0x07
+#define RCAR_CAN_CFDCFCCN_CFIM_SHIFT 12
+#define RCAR_CAN_CFDCFCCN_CFIM_TX_EVERY_MESSAGE 1
 #define RCAR_CAN_CFDCFCCN_CFM_MASK 0x03
 #define RCAR_CAN_CFDCFCCN_CFM_SHIFT 8
 #define RCAR_CAN_CFDCFCCN_CFM_TX 0x01
 #define RCAR_CAN_CFDCFCCN_CFPLS_SHIFT 4
 #define RCAR_CAN_CFDCFCCN_CFPLS_SIZE_64 0x07
+#define RCAR_CAN_CFDCFCCN_CFTXIE_SHIFT 2
+#define RCAR_CAN_CFDCFCCN_CFTXIE_INT_ENABLED 1
 #define RCAR_CAN_CFDCFCCN_CFE_MASK 0x01
 #define RCAR_CAN_CFDCFCCN_CFE_SHIFT 0
 #define RCAR_CAN_CFDCFCCN_CFE_DISABLE 0
@@ -114,6 +118,11 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 /* Common FIFO Configuration / Control Enhancement Register N bits */
 #define RCAR_CAN_CFDCFCCEN_CFBME_SHIFT 16
 #define RCAR_CAN_CFDCFCCEN_CFBME_ENABLE 0
+
+/* Common FIFO Status Registers N */
+#define RCAR_CAN_CFDCFSTSN 0x01E0
+/* Common FIFO Status Registers N bits */
+#define RCAR_CAN_CFDCFSTSN_CFTXIF BIT(4)
 
 /* Common FIFO Pointer Control Register 0 */
 #define RCAR_CAN_CFDCFPCTR0 0x0240
@@ -193,6 +202,7 @@ struct can_rcar_rscanfd_cfg {
 	// TODO utiliser API clock générique
 	//clock_control_subsys_t clk;
 	const struct pinctrl_dev_config *pcfg;
+	void (*connect_irq)(void);
 };
 
 struct can_rcar_rscanfd_data {
@@ -423,8 +433,10 @@ static void can_rcar_rscanfd_configure_fifo(const struct can_rcar_rscanfd_cfg *c
 
 	/* Dedicate a Common FIFO for transmission */
 	sys_write32(RCAR_CAN_CFDCFCCN_CFDC_DEPTH_64 << RCAR_CAN_CFDCFCCN_CFDC_SHIFT |
+		RCAR_CAN_CFDCFCCN_CFIM_TX_EVERY_MESSAGE << RCAR_CAN_CFDCFCCN_CFIM_SHIFT |
 		RCAR_CAN_CFDCFCCN_CFM_TX << RCAR_CAN_CFDCFCCN_CFM_SHIFT |
 		RCAR_CAN_CFDCFCCN_CFPLS_SIZE_64 << RCAR_CAN_CFDCFCCN_CFPLS_SHIFT |
+		RCAR_CAN_CFDCFCCN_CFTXIE_INT_ENABLED << RCAR_CAN_CFDCFCCN_CFTXIE_SHIFT |
 		RCAR_CAN_CFDCFCCN_CFE_DISABLE << RCAR_CAN_CFDCFCCN_CFE_SHIFT,
 		base_addr + RCAR_CAN_CFDCFCCN); // TODO transmission delay dans param DT ? int
 
@@ -538,6 +550,9 @@ static int can_rscanfd_start(const struct device *dev)
 	sys_write32(val, base_addr + RCAR_CAN_CFDCFCCN);
 
 	data->common.started = true;
+
+	// TEST
+	printk("[%s:%d] CFDCNNCFG0=0x%08X, CFDCNNCFG1=0x%08X, CFDCNCTR0=0x%08X, CFDCNCTR1=0x%08X, CFDCNSTS0=0x%08X, CFDCNSTS1=0x%08X, CFDCFCCN0=0x%08X, CFDCFCCN1=0x%08X, RCAR_CAN_CFDCFCCEN0=0x%08X, RCAR_CAN_CFDCFCCEN1=0x%08X, CFDCFSTS0=0x%08X, CFDCFSTS1=0x%08X\n", __func__, __LINE__, sys_read32(config->reg), sys_read32(config->reg + 16), sys_read32(config->reg + 4), sys_read32(config->reg + 4 + 16), sys_read32(config->reg + 8), sys_read32(config->reg + 8 + 16), sys_read32(config->reg + 0x120), sys_read32(config->reg + 0x120 + (3*4)), sys_read32(config->reg + 0x180), sys_read32(config->reg + 0x180 + (3*4)), sys_read32(config->reg + 0x1E0), sys_read32(config->reg + 0x1E0 + (3*4)));
 
 
 #if 0
@@ -730,6 +745,25 @@ static int can_rscanfd_get_max_filters(const struct device *dev, bool ide)
 	return /*CONFIG_CAN_RCAR_MAX_FILTERS*/10;
 }
 
+static void can_rcar_rscanfd_isr(const struct device *dev)
+{
+	const struct can_rcar_rscanfd_cfg *config = dev->config;
+	uint32_t base_addr, irq_flags;
+
+	printk("[%s:%d] entry dev=%s\n", __func__, __LINE__, dev->name);
+
+	/* The status registers are all consecutive */
+	base_addr = config->reg + (config->channel * sizeof(uint32_t));
+
+	irq_flags = sys_read32(base_addr + RCAR_CAN_CFDCFSTSN);
+	if (irq_flags & RCAR_CAN_CFDCFSTSN_CFTXIF) {
+
+		/* Clear the interrupt flag */
+		irq_flags &= ~RCAR_CAN_CFDCFSTSN_CFTXIF;
+		sys_write32(irq_flags, base_addr + RCAR_CAN_CFDCFSTSN);
+	}
+}
+
 static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 	.get_capabilities = can_rscanfd_get_capabilities,
 	.start = can_rscanfd_start,
@@ -808,6 +842,8 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 	// TEST
 	//}
 
+	config->connect_irq();
+
 	/* Switch the controller to operation mode when all channels are initialized */
 	enabled_channels_count++;
 	if (enabled_channels_count == global_config->num_enabled_channels) {
@@ -827,6 +863,14 @@ static int can_rcar_rscanfd_init(const struct device *dev)
  */
 #define CAN_RCAR_RSCANFD_INIT(n)							\
 	PINCTRL_DT_INST_DEFINE(n);						\
+	\
+	static void can_rcar_rscandfd_connect_irq_##n(void) \
+	{ \
+		IRQ_CONNECT(DT_INST_IRQN(n), DT_INST_IRQ(n, priority), \
+			    can_rcar_rscanfd_isr, DEVICE_DT_INST_GET(n), 0); \
+		irq_enable(DT_INST_IRQN(n)); \
+	} \
+	\
 	/*static void can_rcar_##n##_init(const struct device *dev);*/		\
 	static const struct can_rcar_rscanfd_cfg can_rcar_rscanfd_cfg_##n = {			\
 		.common = CAN_DT_DRIVER_CONFIG_INST_GET(n, 0, 1000000),		\
@@ -839,7 +883,8 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 		/*.clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 0, name),*/ \
 		/*.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),*/		\
 		/*.bus_clk.rate = 40000000, TODO */					\
-		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n)			\
+		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n),			\
+		.connect_irq = can_rcar_rscandfd_connect_irq_##n \
 	};									\
 	BUILD_ASSERT(DT_INST_PROP(n, channel) < RCAR_CAN_RSCANFD_CHANNELS_COUNT, \
 		     "Channel number is invalid."); \
