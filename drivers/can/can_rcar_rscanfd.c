@@ -101,6 +101,7 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 #define RCAR_CAN_CFDCFCCN_CFDC_DEPTH_128 0x07
 #define RCAR_CAN_CFDCFCCN_CFIM_SHIFT 12
 #define RCAR_CAN_CFDCFCCN_CFIM_TX_EVERY_MESSAGE 1
+#define RCAR_CAN_CFDCFCCN_CFIM_TX_LAST_MESSAGE 0 // TODO moins d'interrupts mais gestion queue de tx callbacks, voir plus tard pour perfs
 #define RCAR_CAN_CFDCFCCN_CFM_MASK 0x03
 #define RCAR_CAN_CFDCFCCN_CFM_SHIFT 8
 #define RCAR_CAN_CFDCFCCN_CFM_TX 0x01
@@ -202,11 +203,15 @@ struct can_rcar_rscanfd_cfg {
 	// TODO utiliser API clock générique
 	//clock_control_subsys_t clk;
 	const struct pinctrl_dev_config *pcfg;
-	void (*connect_irq)(void);
+	void (*configure_irq)(void);
 };
 
 struct can_rcar_rscanfd_data {
 	struct can_driver_data common;
+	struct k_mutex inst_mutex;
+	can_tx_callback_t tx_callback;
+	void *tx_user_data;
+	struct k_sem tx_sem;
 };
 
 typedef struct
@@ -670,6 +675,15 @@ static int can_rscanfd_send(const struct device *dev, const struct can_frame *fr
 
 	base_addr = config->reg + (config->channel * 0x180);
 
+	if (k_sem_take(&data->tx_sem, timeout) != 0) {
+		return -EAGAIN;
+	}
+
+	k_mutex_lock(&data->inst_mutex, K_FOREVER);
+
+	data->tx_callback = callback;
+	data->tx_user_data = user_data;
+
 	/* ID and flags */
 	val = (frame->id & RCAR_CAN_CFDCFID0N_CFID_MASK) << RCAR_CAN_CFDCFID0N_CFID_SHIFT;
 	if (frame->flags & CAN_FRAME_IDE) {
@@ -712,6 +726,8 @@ static int can_rscanfd_send(const struct device *dev, const struct can_frame *fr
 
 	sys_write32(0xFF, base_addr + RCAR_CAN_CFDCFPCTR0);
 
+	k_mutex_unlock(&data->inst_mutex);
+
 	printk("[%s:%d] transmission OK\n", __func__, __LINE__);
 
 	// TODO
@@ -748,6 +764,7 @@ static int can_rscanfd_get_max_filters(const struct device *dev, bool ide)
 static void can_rcar_rscanfd_isr(const struct device *dev)
 {
 	const struct can_rcar_rscanfd_cfg *config = dev->config;
+	struct can_rcar_rscanfd_data *data = dev->data;
 	uint32_t base_addr, irq_flags;
 
 	printk("[%s:%d] entry dev=%s\n", __func__, __LINE__, dev->name);
@@ -757,6 +774,8 @@ static void can_rcar_rscanfd_isr(const struct device *dev)
 
 	irq_flags = sys_read32(base_addr + RCAR_CAN_CFDCFSTSN);
 	if (irq_flags & RCAR_CAN_CFDCFSTSN_CFTXIF) {
+		data->tx_callback(dev, 0 /* TODO */, data->tx_user_data);
+		k_sem_give(&data->tx_sem);
 
 		/* Clear the interrupt flag */
 		irq_flags &= ~RCAR_CAN_CFDCFSTSN_CFTXIF;
@@ -764,44 +783,12 @@ static void can_rcar_rscanfd_isr(const struct device *dev)
 	}
 }
 
-static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
-	.get_capabilities = can_rscanfd_get_capabilities,
-	.start = can_rscanfd_start,
-	.stop = can_rscanfd_stop,
-	.set_mode = can_rcar_rscanfd_set_mode,
-	.set_timing = can_rcar_rscanfd_set_timing,
-	.send = can_rscanfd_send,
-	//.add_rx_filter = can_rcar_add_rx_filter,
-	//.remove_rx_filter = can_rcar_remove_rx_filter,
-	.get_state = can_rscanfd_get_state,
-/*#ifdef CONFIG_CAN_MANUAL_RECOVERY_MODE
-	.recover = can_rcar_recover,
-#endif*/ /* CONFIG_CAN_MANUAL_RECOVERY_MODE */
-	//.set_state_change_callback = can_rcar_set_state_change_callback,
-	.get_core_clock = can_rcar_rscanfd_get_core_clock,
-	.get_max_filters = can_rscanfd_get_max_filters,
-	// TODO
-	.timing_min = {
-		.sjw = 0x1,
-		.prop_seg = 0x00,
-		.phase_seg1 = 0x04,
-		.phase_seg2 = 0x02,
-		.prescaler = 0x01
-	},
-	.timing_max = {
-		.sjw = 0x4,
-		.prop_seg = 0x00,
-		.phase_seg1 = 0x10,
-		.phase_seg2 = 0x08,
-		.prescaler = 0x400
-	}
-};
-
 static int can_rcar_rscanfd_init(const struct device *dev)
 {
 	static uint32_t enabled_channels_count = 0;
 	const struct can_rcar_rscanfd_cfg *config = dev->config;
 	const struct can_rcar_rscanfd_global_cfg *global_config = config->global_dev->config;
+	struct can_rcar_rscanfd_data *data = dev->data;
 	struct can_timing timing /*= {0}*/;
 	int ret;
 
@@ -842,7 +829,10 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 	// TEST
 	//}
 
-	config->connect_irq();
+	config->configure_irq();
+
+	k_mutex_init(&data->inst_mutex);
+	k_sem_init(&data->tx_sem, 1, 1);
 
 	/* Switch the controller to operation mode when all channels are initialized */
 	enabled_channels_count++;
@@ -850,6 +840,7 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 		ret = can_rcar_rscanfd_enter_operation_mode(global_config);
 		if (ret) {
 			LOG_ERR("Failed to put the controller in operation mode.");
+			// TODO uninit ?
 			return ret;
 		}
 		LOG_DBG("All channels were successfully initialized.");
@@ -858,13 +849,46 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 	return 0;
 }
 
+static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
+	.get_capabilities = can_rscanfd_get_capabilities,
+	.start = can_rscanfd_start,
+	.stop = can_rscanfd_stop,
+	.set_mode = can_rcar_rscanfd_set_mode,
+	.set_timing = can_rcar_rscanfd_set_timing,
+	.send = can_rscanfd_send,
+	//.add_rx_filter = can_rcar_add_rx_filter,
+	//.remove_rx_filter = can_rcar_remove_rx_filter,
+	.get_state = can_rscanfd_get_state,
+/*#ifdef CONFIG_CAN_MANUAL_RECOVERY_MODE
+	.recover = can_rcar_recover,
+#endif*/ /* CONFIG_CAN_MANUAL_RECOVERY_MODE */
+	//.set_state_change_callback = can_rcar_set_state_change_callback,
+	.get_core_clock = can_rcar_rscanfd_get_core_clock,
+	.get_max_filters = can_rscanfd_get_max_filters,
+	// TODO
+	.timing_min = {
+		.sjw = 0x1,
+		.prop_seg = 0x00,
+		.phase_seg1 = 0x04,
+		.phase_seg2 = 0x02,
+		.prescaler = 0x01
+	},
+	.timing_max = {
+		.sjw = 0x4,
+		.prop_seg = 0x00,
+		.phase_seg1 = 0x10,
+		.phase_seg2 = 0x08,
+		.prescaler = 0x400
+	}
+};
+
 /*
  * A CAN controller channel.
  */
 #define CAN_RCAR_RSCANFD_INIT(n)							\
 	PINCTRL_DT_INST_DEFINE(n);						\
 	\
-	static void can_rcar_rscandfd_connect_irq_##n(void) \
+	static void can_rcar_rscandfd_configure_irq_##n(void) \
 	{ \
 		IRQ_CONNECT(DT_INST_IRQN(n), DT_INST_IRQ(n, priority), \
 			    can_rcar_rscanfd_isr, DEVICE_DT_INST_GET(n), 0); \
@@ -884,7 +908,7 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 		/*.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),*/		\
 		/*.bus_clk.rate = 40000000, TODO */					\
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n),			\
-		.connect_irq = can_rcar_rscandfd_connect_irq_##n \
+		.configure_irq = can_rcar_rscandfd_configure_irq_##n \
 	};									\
 	BUILD_ASSERT(DT_INST_PROP(n, channel) < RCAR_CAN_RSCANFD_CHANNELS_COUNT, \
 		     "Channel number is invalid."); \
