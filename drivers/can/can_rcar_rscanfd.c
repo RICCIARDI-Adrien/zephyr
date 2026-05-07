@@ -185,6 +185,9 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 /** How many Common FIFO are assigned to each channel. */
 #define RCAR_CAN_RSCANFD_COMMON_FIFO_PER_CHANNEL 3
 
+/* There are four consecutive 4-byte registers per entry */
+#define RCAR_CAN_RSCANFD_AFL_ENTRY_SIZE 16
+
 struct can_rcar_rscanfd_global_cfg {
 	uint32_t reg;
 	const struct device *clock_dev;
@@ -388,7 +391,7 @@ static int can_rcar_rscanfd_channel_enter_operation_mode(const struct can_rcar_r
  */
 static void can_rcar_rscanfd_configure_acceptance_filter_list(const struct can_rcar_rscanfd_cfg *config)
 {
-	uint32_t addr, val, shift;
+	uint32_t base_addr, val, shift;
 
 	/*
 	 * Enable write access for the page 0 (set the page index 0 value in the same time).
@@ -397,10 +400,10 @@ static void can_rcar_rscanfd_configure_acceptance_filter_list(const struct can_r
 	sys_write32(RCAR_CAN_CFDGAFLECTR_AFLDAE, config->reg + RCAR_CAN_CFDGAFLECTR);
 
 	/* There are two consecutive channel rules per CFDGAFLCFGn register */
-	addr = config->reg + RCAR_CAN_CFDGAFLCFGN + (config->channel / 2);
+	base_addr = config->reg + RCAR_CAN_CFDGAFLCFGN + (config->channel / 2);
 	/* Address the correct channel within the register */
-	val = sys_read32(addr);
-	//printk("[%s:%d] RCAR_CAN_CFDGAFLCFG%d avant = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(addr));
+	val = sys_read32(base_addr);
+	printk("[%s:%d] RCAR_CAN_CFDGAFLCFG%d avant = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(base_addr));
 	if (config->channel & 1) { /* Odd channel */
 		shift = RCAR_CAN_CFDGAFLCFGN_RNC_CHANNEL_ODD_SHIFT;
 	}
@@ -410,19 +413,19 @@ static void can_rcar_rscanfd_configure_acceptance_filter_list(const struct can_r
 	val &= ~(RCAR_CAN_CFDGAFLCFGN_RNC_CHANNEL_MASK << shift);
 	/* Configure one rule for the channel */
 	val |= 1 << shift;
-	sys_write32(val, addr);
-	//printk("[%s:%d] RCAR_CAN_CFDGAFLCFG%d apres = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(addr));
+	sys_write32(val, base_addr);
+	printk("[%s:%d] RCAR_CAN_CFDGAFLCFG%d apres = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(base_addr));
 
-	/* A page contains 16 entries, with a 4-byte register per entry */
-	addr = config->reg + (config->channel * 4);
+	/* A page contains 16 consecutive entries */
+	base_addr = config->reg + (config->channel * RCAR_CAN_RSCANFD_AFL_ENTRY_SIZE);
 	/* Clear the CAN ID as it won't be taken into account by the mask register */
-	sys_write32(0, addr + RCAR_CAN_CFDGAFLIDN);
+	sys_write32(0, base_addr + RCAR_CAN_CFDGAFLIDN);
 	/* Accept all received CAN frames */
-	sys_write32(0, addr + RCAR_CAN_CFDGAFLMN);
+	sys_write32(0, base_addr + RCAR_CAN_CFDGAFLMN);
 	/* Disable the DLC check */
-	sys_write32(0, addr + RCAR_CAN_CFDGAFLP0N);
+	sys_write32(0, base_addr + RCAR_CAN_CFDGAFLP0N);
 	/* Use a dedicated RX FIFO as target for reception */
-	sys_write32(1 << config->channel, addr + RCAR_CAN_CFDGAFLP1N);
+	sys_write32(1 << config->channel, base_addr + RCAR_CAN_CFDGAFLP1N);
 
 	/* Disable write access for page 0 */
 	sys_write32(0, config->reg + RCAR_CAN_CFDGAFLECTR);

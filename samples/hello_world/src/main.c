@@ -7,10 +7,14 @@
 #include <stdio.h>
 #include <zephyr/drivers/can.h>
 
+#define ENABLE_CAN_1 1
+
 //static const struct device *can_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
 
 static const struct device *can_dev = DEVICE_DT_GET(DT_NODELABEL(can0)); //DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
-//static const struct device *can_dev_1 = DEVICE_DT_GET(DT_NODELABEL(can1));
+#if ENABLE_CAN_1
+static const struct device *can_dev_1 = DEVICE_DT_GET(DT_NODELABEL(can1));
+#endif
 
 static void can_0_rx_callback(const struct device *dev, struct can_frame *frame, void *user_data)
 {
@@ -51,12 +55,14 @@ int main(void)
 	}
 	printk("CAN 0 RX filter ID : %d.\n", ret);
 
-	/*ret = can_start(can_dev_1);
+#if 0// ENABLE_CAN_1
+	ret = can_start(can_dev_1);
 	if (ret != 0)
 	{
 		printk("err can_start() dev 1 %d.\n", ret);
 		return 0;
-	}*/
+	}
+#endif
 
 	while (1)
 	{
