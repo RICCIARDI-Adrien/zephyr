@@ -7,11 +7,11 @@
 #include <stdio.h>
 #include <zephyr/drivers/can.h>
 
-#define ENABLE_CAN_1 1
+#define ENABLE_CAN_1 0
 
 //static const struct device *can_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
 
-static const struct device *can_dev = DEVICE_DT_GET(DT_NODELABEL(can0)); //DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
+static const struct device *can_dev = DEVICE_DT_GET(DT_NODELABEL(can0));
 #if ENABLE_CAN_1
 static const struct device *can_dev_1 = DEVICE_DT_GET(DT_NODELABEL(can1));
 #endif
@@ -55,7 +55,7 @@ int main(void)
 	}
 	printk("CAN 0 RX filter ID : %d.\n", ret);
 
-#if 0// ENABLE_CAN_1
+#if ENABLE_CAN_1
 	ret = can_start(can_dev_1);
 	if (ret != 0)
 	{
