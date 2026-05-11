@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <zephyr/drivers/can.h>
 
-#define ENABLE_CAN_1 0
+#define ENABLE_CAN_1 1
 
 //static const struct device *can_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
 
@@ -16,9 +16,9 @@ static const struct device *can_dev = DEVICE_DT_GET(DT_NODELABEL(can0));
 static const struct device *can_dev_1 = DEVICE_DT_GET(DT_NODELABEL(can1));
 #endif
 
-static void can_0_rx_callback(const struct device *dev, struct can_frame *frame, void *user_data)
+static void can_rx_callback(const struct device *dev, struct can_frame *frame, void *user_data)
 {
-	printk("Trame reçue ! ID=%X, DLC=%u.\n", frame->id, frame->dlc);
+	printk("Trame reçue %s ! ID=%X, DLC=%u.\n", dev->name, frame->id, frame->dlc);
 }
 
 int main(void)
@@ -47,7 +47,7 @@ int main(void)
 	filter.id = 0;
 	filter.mask = 0;
 	filter.flags = 0;
-	ret = can_add_rx_filter(can_dev, can_0_rx_callback, NULL, &filter);
+	ret = can_add_rx_filter(can_dev, can_rx_callback, NULL, &filter);
 	if (ret < 0)
 	{
 		printk("err can_add_rx_filter() %d.\n", ret);
@@ -62,6 +62,18 @@ int main(void)
 		printk("err can_start() dev 1 %d.\n", ret);
 		return 0;
 	}
+
+	// Receive all frames
+	filter.id = 0;
+	filter.mask = 0;
+	filter.flags = 0;
+	ret = can_add_rx_filter(can_dev, can_rx_callback, NULL, &filter);
+	if (ret < 0)
+	{
+		printk("err can_add_rx_filter() dev 1 %d.\n", ret);
+		return 0;
+	}
+	printk("CAN 1 RX filter ID : %d.\n", ret);
 #endif
 
 	while (1)

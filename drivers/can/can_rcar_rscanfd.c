@@ -230,6 +230,10 @@ struct can_rcar_rscanfd_data {
 	can_tx_callback_t tx_callback;
 	void *tx_user_data;
 	struct k_sem tx_sem;
+	can_rx_callback_t rx_callback[CONFIG_CAN_RCAR_MAX_FILTERS];
+	void *rx_callback_user_data[CONFIG_CAN_RCAR_MAX_FILTERS];
+	struct can_filter filter[CONFIG_CAN_RCAR_MAX_FILTERS];
+	struct k_mutex rx_mutex;
 };
 
 typedef struct
@@ -749,7 +753,54 @@ static int can_rcar_rscanfd_send(const struct device *dev, const struct can_fram
 static int can_rcar_rscanfd_add_rx_filter(const struct device *dev, can_rx_callback_t callback,
 					  void *user_data, const struct can_filter *filter)
 {
-	return 0; // TODO
+	struct can_rcar_rscanfd_data *data = dev->data;
+	int i, ret;
+
+	printk("[%s:%d] entry\n", __func__, __LINE__);
+
+	if ((filter->flags & ~(CAN_FILTER_IDE)) != 0) {
+		LOG_ERR("Unsupported CAN filter flags 0x%02X.", filter->flags);
+		return -ENOTSUP;
+	}
+
+	k_mutex_lock(&data->rx_mutex, K_FOREVER);
+
+	/* Search for the first empty entry */
+	for (i = 0; i < CONFIG_CAN_RCAR_MAX_FILTERS; i++) {
+		if (data->rx_callback[i] == NULL) {
+			data->rx_callback_user_data[i] = user_data;
+			data->filter[i] = *filter;
+			data->rx_callback[i] = callback;
+			break;
+		}
+	}
+
+	k_mutex_unlock(&data->rx_mutex);
+
+	if (i == CONFIG_CAN_RCAR_MAX_FILTERS) {
+		ret = -ENOSPC;
+	}
+	else {
+		ret = i;
+	}
+
+	return ret;
+}
+
+static void can_rcar_rscanfd_remove_rx_filter(const struct device *dev, int filter_id)
+{
+	struct can_rcar_rscanfd_data *data = dev->data;
+
+	printk("[%s:%d] entry\n", __func__, __LINE__);
+
+	if (filter_id < 0 || filter_id >= CONFIG_CAN_RCAR_MAX_FILTERS) {
+		LOG_ERR("Filter ID %d is out of bounds.", filter_id);
+		return;
+	}
+
+	k_mutex_lock(&data->rx_mutex, K_FOREVER);
+	data->rx_callback[filter_id] = NULL;
+	k_mutex_unlock(&data->rx_mutex);
 }
 
 static int can_rscanfd_get_state(const struct device *dev, enum can_state *state,
@@ -775,8 +826,7 @@ static int can_rscanfd_get_max_filters(const struct device *dev, bool ide)
 
 	printk("[%s:%d] entry\n", __func__, __LINE__);
 
-	// TODO
-	return /*CONFIG_CAN_RCAR_MAX_FILTERS*/10;
+	return CONFIG_CAN_RCAR_MAX_FILTERS;
 }
 
 static void can_rcar_rscanfd_isr(const struct device *dev)
@@ -863,6 +913,7 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 
 	k_mutex_init(&data->inst_mutex);
 	k_sem_init(&data->tx_sem, 1, 1);
+	k_mutex_init(&data->rx_mutex);
 
 	/* Switch the controller to operation mode when all channels are initialized */
 	enabled_channels_count++;
@@ -887,7 +938,7 @@ static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 	.set_timing = can_rcar_rscanfd_set_timing,
 	.send = can_rcar_rscanfd_send,
 	.add_rx_filter = can_rcar_rscanfd_add_rx_filter,
-	//.remove_rx_filter = can_rcar_remove_rx_filter,
+	.remove_rx_filter = can_rcar_rscanfd_remove_rx_filter,
 	.get_state = can_rscanfd_get_state,
 /*#ifdef CONFIG_CAN_MANUAL_RECOVERY_MODE
 	.recover = can_rcar_recover,
