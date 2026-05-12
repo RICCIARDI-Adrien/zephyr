@@ -106,7 +106,8 @@ int main(void)
 			return 0;
 		}
 
-		/*frame.id = 0x3F1;
+#if ENABLE_CAN_1
+		frame.id = 0x3F1;
 		frame.dlc = can_bytes_to_dlc(4);
 		frame.flags = 0;
 		frame.data[0] = cnt >> 24;
@@ -118,7 +119,8 @@ int main(void)
 		{
 			printk("err can_send() dev 1 %d.\n", ret);
 			return 0;
-		}*/
+		}
+#endif
 
 		k_msleep(3000);
 	}
