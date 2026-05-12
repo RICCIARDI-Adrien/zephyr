@@ -139,6 +139,7 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 /* Common FIFO Status Registers N bits */
 #define RSCANFD_CFDCFSTSN_CFTXIF BIT(4)
 #define RSCANFD_CFDCFSTSN_CFRXIF BIT(3)
+#define RSCANFD_CFDCFSTSN_CFEMP BIT(0)
 
 /* Common FIFO Pointer Control Register 0 */
 #define RSCANFD_CFDCFPCTR0 0x0240
@@ -851,7 +852,7 @@ static int can_rscanfd_get_max_filters(const struct device *dev, bool ide)
 	return CONFIG_CAN_RCAR_MAX_FILTERS;
 }
 
-static int can_rcar_rscanfd_rx_isr(const struct device *dev)
+static void can_rcar_rscanfd_rx_isr(const struct device *dev)
 {
 	const struct can_rcar_rscanfd_cfg *config = dev->config;
 	const struct can_rcar_rscanfd_data *data = dev->data;
@@ -859,7 +860,6 @@ static int can_rcar_rscanfd_rx_isr(const struct device *dev)
 	uint32_t val, i, bytes_count;
 	struct can_frame frame, user_frame;
 	uint8_t *can_data;
-	int ret = -EINVAL;
 
 	/* The channel second Common FIFO is used for reception */
 	base_offset = config->channel * RSCANFD_COMMON_FIFO_PER_CHANNEL *
@@ -905,7 +905,7 @@ static int can_rcar_rscanfd_rx_isr(const struct device *dev)
 		goto exit_next_frame;
 	}
 
-	printk("[%s:%d] ID=%u, DLC=%u, bytes_count=%u\n", __func__, __LINE__, frame.id, frame.dlc, bytes_count);
+	//printk("[%s:%d] ID=%u, DLC=%u, bytes_count=%u\n", __func__, __LINE__, frame.id, frame.dlc, bytes_count);
 
 	/* Retrieve the data */
 	source_addr = config->reg + base_offset + RSCANFD_CFDCFDF0BN;
@@ -914,7 +914,7 @@ static int can_rcar_rscanfd_rx_isr(const struct device *dev)
 		*can_data = sys_read8(source_addr);
 		source_addr++;
 		can_data++;
-		printk("[%s:%d] data %d=0x%02X\n", __func__, __LINE__, i, *(can_data - 1));
+		//printk("[%s:%d] data %d=0x%02X\n", __func__, __LINE__, i, *(can_data - 1));
 	}
 
 	/* Check for all matching filters */
@@ -932,19 +932,13 @@ static int can_rcar_rscanfd_rx_isr(const struct device *dev)
 		 * filter callback, and another filter also matches afterwards.
 		 */
 		user_frame = frame;
-
+		data->rx_callback[i](dev, &user_frame, data->rx_callback_user_data[i]);
 	}
-
-
-	// TODO
-	ret = 0;
 
 exit_next_frame:
 	/* Increment the FIFO read pointer to get access to the next received frame */
 	base_offset = config->channel * RSCANFD_COMMON_FIFO_PER_CHANNEL * sizeof(uint32_t);
 	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFPCTR1, 0xFF);
-
-	return ret;
 }
 
 static void can_rcar_rscanfd_isr(const struct device *dev)
@@ -952,37 +946,35 @@ static void can_rcar_rscanfd_isr(const struct device *dev)
 	const struct can_rcar_rscanfd_cfg *config = dev->config;
 	struct can_rcar_rscanfd_data *data = dev->data;
 	uint32_t irq_flags;
-	mem_addr_t base_addr;
+	mem_addr_t base_offset;
 
 	printk("[%s:%d] entry dev=%s\n", __func__, __LINE__, dev->name);
 
 	/* Frame transmission, uses the first Common FIFO of the channel */
-	base_addr = config->reg +
-		(config->channel * sizeof(uint32_t) * RSCANFD_COMMON_FIFO_PER_CHANNEL);
-	irq_flags = sys_read32(base_addr + RSCANFD_CFDCFSTSN);
+	base_offset = config->channel * sizeof(uint32_t) * RSCANFD_COMMON_FIFO_PER_CHANNEL;
+	irq_flags = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCFSTSN);
 	if (irq_flags & RSCANFD_CFDCFSTSN_CFTXIF) {
 		data->tx_callback(dev, 0 /* TODO */, data->tx_user_data);
 		k_sem_give(&data->tx_sem);
 
 		/* Clear the interrupt flag */
 		irq_flags &= ~RSCANFD_CFDCFSTSN_CFTXIF;
-		sys_write32(irq_flags, base_addr + RSCANFD_CFDCFSTSN);
+		can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFSTSN, irq_flags);
 	}
 
 	/* Frame reception, uses the second Common FIFO of the channel */
-	base_addr += sizeof(uint32_t);
-	irq_flags = sys_read32(base_addr + RSCANFD_CFDCFSTSN);
+	base_offset += sizeof(uint32_t);
+	irq_flags = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCFSTSN);
 	if (irq_flags & RSCANFD_CFDCFSTSN_CFRXIF) {
-		// TODO
-		printk("TRAME RECUE\n");
-
-		//do {
-		can_rcar_rscanfd_rx_isr(dev);
-		//} while (
+		/* Handle all the messages contained in the FIFO */
+		do {
+			can_rcar_rscanfd_rx_isr(dev);
+		} while (!(can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCFSTSN)
+			& RSCANFD_CFDCFSTSN_CFEMP));
 
 		/* Clear the interrupt flag */
 		irq_flags &= ~RSCANFD_CFDCFSTSN_CFRXIF;
-		sys_write32(irq_flags, base_addr + RSCANFD_CFDCFSTSN);
+		can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFSTSN, irq_flags);
 	}
 }
 
