@@ -18,7 +18,18 @@ static const struct device *can_dev_1 = DEVICE_DT_GET(DT_NODELABEL(can1));
 
 static void can_rx_callback(const struct device *dev, struct can_frame *frame, void *user_data)
 {
-	printk("Trame reçue %s ! ID=%X, DLC=%u.\n", dev->name, frame->id, frame->dlc);
+	int i, bytes;
+	uint8_t *ptr_data;
+
+	bytes = can_dlc_to_bytes(frame->dlc);
+	ptr_data = frame->data;
+
+	printk("Trame reçue %s ! ID=%X, DLC=%u, bytes=%d.\n", dev->name, frame->id, frame->dlc, bytes);
+	for (i = 0; i < bytes; i++)
+	{
+		printk("Data %i : %02X\n", i, *ptr_data);
+		ptr_data++;
+	}
 }
 
 int main(void)
@@ -67,7 +78,7 @@ int main(void)
 	filter.id = 0;
 	filter.mask = 0;
 	filter.flags = 0;
-	ret = can_add_rx_filter(can_dev, can_rx_callback, NULL, &filter);
+	ret = can_add_rx_filter(can_dev_1, can_rx_callback, NULL, &filter);
 	if (ret < 0)
 	{
 		printk("err can_add_rx_filter() dev 1 %d.\n", ret);
