@@ -662,7 +662,7 @@ static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 {
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	struct can_rcar_rscanfd_data *data = dev->data;
-	uint32_t base_offset, val;
+	uint32_t base_offset, val_rx, val_tx;
 	int ret;
 
 	LOG_DBG("Set mode %u for channel %u (current mode is %u).",
@@ -698,23 +698,34 @@ static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 
 	k_mutex_lock(&data->inst_mutex, K_FOREVER);
 
-	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNCTR);
-	val &= ~((RSCANFD_CFDCNCTR_CTMS_MASK << RSCANFD_CFDCNCTR_CTMS_SHIFT) |
+	/* Always modify both TX and RX FIFOs, to make sure to cancel any previously set mode */
+	val_tx = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNCTR);
+	val_tx &= ~((RSCANFD_CFDCNCTR_CTMS_MASK << RSCANFD_CFDCNCTR_CTMS_SHIFT) |
+		(RSCANFD_CFDCNCTR_CTME_MASK << RSCANFD_CFDCNCTR_CTME_SHIFT));
+	val_rx = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNCTR + sizeof(uint32_t));
+	val_rx &= ~((RSCANFD_CFDCNCTR_CTMS_MASK << RSCANFD_CFDCNCTR_CTMS_SHIFT) |
 		(RSCANFD_CFDCNCTR_CTME_MASK << RSCANFD_CFDCNCTR_CTME_SHIFT));
 
 	if (mode & CAN_MODE_LOOPBACK) {
-		val |= (RSCANFD_CFDCNCTR_CTMS_INTERNAL_LOOPBACK_MODE << RSCANFD_CFDCNCTR_CTMS_SHIFT) |
+		/* Internally connect TX to RX, unconnecting RX from the physical pin */
+		val_tx |= (RSCANFD_CFDCNCTR_CTMS_INTERNAL_LOOPBACK_MODE << RSCANFD_CFDCNCTR_CTMS_SHIFT) |
 			(RSCANFD_CFDCNCTR_CTME_ENABLED << RSCANFD_CFDCNCTR_CTME_SHIFT);
+		/* Set the normal mode for the RX FIFO */
+		val_rx |= RSCANFD_CFDCNCTR_CTME_DISABLED << RSCANFD_CFDCNCTR_CTME_SHIFT;
 	}
 	else if (mode & CAN_MODE_LISTENONLY) {
-		val |= (RSCANFD_CFDCNCTR_CTMS_LISTEN_ONLY_MODE << RSCANFD_CFDCNCTR_CTMS_SHIFT) |
+		/* Keep the TX FIFO in normal mode, the can_send() function prevents any transmission */
+		val_tx |= RSCANFD_CFDCNCTR_CTME_DISABLED << RSCANFD_CFDCNCTR_CTME_SHIFT;
+		val_rx |= (RSCANFD_CFDCNCTR_CTMS_LISTEN_ONLY_MODE << RSCANFD_CFDCNCTR_CTMS_SHIFT) |
 			(RSCANFD_CFDCNCTR_CTME_ENABLED << RSCANFD_CFDCNCTR_CTME_SHIFT);
 	}
 	else if (mode & CAN_MODE_NORMAL) {
-		val |= RSCANFD_CFDCNCTR_CTME_DISABLED << RSCANFD_CFDCNCTR_CTME_SHIFT;
+		val_tx |= RSCANFD_CFDCNCTR_CTME_DISABLED << RSCANFD_CFDCNCTR_CTME_SHIFT;
+		val_rx |= RSCANFD_CFDCNCTR_CTME_DISABLED << RSCANFD_CFDCNCTR_CTME_SHIFT;
 	}
-	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNCTR, val);
 
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNCTR, val_tx);
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNCTR + sizeof(uint32_t), val_rx);
 
 #ifdef CONFIG_CAN_FD_MODE
 	if (mode & CAN_MODE_FD) {
@@ -778,6 +789,11 @@ static int can_rcar_rscanfd_send(const struct device *dev, const struct can_fram
 
 	if (!data->common.started) {
 		return -ENETDOWN;
+	}
+
+	/* The device is not allowed to transmit in listen-only mode */
+	if (data->common.mode & CAN_MODE_LISTENONLY) {
+		return -ENOTSUP;
 	}
 
 	// TODO timestamp
@@ -1032,12 +1048,6 @@ static void can_rcar_rscanfd_isr(const struct device *dev)
 		can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFSTSN, irq_flags);
 	}
 }
-
-/*static int can_rcar_rscanfd_channel_dev_visitor_callback(const struct device *dev, void *context)
-{
-	printk("[%s:%d] VISITOR %s\n", dev->name);
-	return 0;
-}*/
 
 static int can_rcar_rscanfd_init(const struct device *dev)
 {
