@@ -16,8 +16,6 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 
 #define DT_DRV_COMPAT renesas_rcar_rscanfd
 
-// TODO faire "enum" par canal ?
-
 // TODO MMIO
 
 /* Channel N Nominal Bitrate Configuration Register */
@@ -223,18 +221,6 @@ struct can_rcar_rscanfd_config {
 	const struct device *global_dev;
 	uint32_t reg;
 	uint32_t channel;
-	//int reg_size;
-	//init_func_t init_func;
-	//const struct device *clock_dev;
-/*#ifdef CONFIG_SOC_SERIES_RCAR_GEN5 // TODO
-	clock_control_subsys_t mod_clk;
-	clock_control_subsys_t bus_clk;
-#else
-	struct rcar_cpg_clk mod_clk;
-	struct rcar_cpg_clk bus_clk;
-#endif*/
-	// TODO utiliser API clock générique
-	//clock_control_subsys_t clk;
 	const struct pinctrl_dev_config *pcfg;
 	void (*configure_irq)(void);
 };
@@ -442,21 +428,21 @@ static void can_rcar_rscanfd_set_fifo_enabled(const struct device *dev, bool ena
  * Configure the rules table by creating one rule that matches them all (reception frames).
  * The reception filters are currently implemented in software.
  */
-static void can_rcar_rscanfd_configure_acceptance_filter_list(const struct can_rcar_rscanfd_config *config)
+static inline void can_rcar_rscanfd_configure_acceptance_filter_list(const struct device *dev)
 {
-	uint32_t base_addr, val, shift;
+	const struct can_rcar_rscanfd_config *config = dev->config;
+	uint32_t base_offset, val, shift;
 
 	/*
 	 * Enable write access for the page 0 (set the page index 0 value in the same time).
 	 * As all channels will use a single rule, only the first page is needed.
 	 */
-	sys_write32(RSCANFD_CFDGAFLECTR_AFLDAE, config->reg + RSCANFD_CFDGAFLECTR);
+	can_rcar_rscanfd_write(dev, RSCANFD_CFDGAFLECTR, RSCANFD_CFDGAFLECTR_AFLDAE);
 
 	/* There are two consecutive channel rules per CFDGAFLCFGn register */
-	base_addr = config->reg + RSCANFD_CFDGAFLCFGN + (config->channel / 2);
+	base_offset = RSCANFD_CFDGAFLCFGN + (config->channel / 2);
 	/* Address the correct channel within the register */
-	val = sys_read32(base_addr);
-	printk("[%s:%d] RSCANFD_CFDGAFLCFG%d avant = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(base_addr));
+	val = can_rcar_rscanfd_read(dev, base_offset);
 	if (config->channel & 1) { /* Odd channel */
 		shift = RSCANFD_CFDGAFLCFGN_RNC_CHANNEL_ODD_SHIFT;
 	}
@@ -466,26 +452,25 @@ static void can_rcar_rscanfd_configure_acceptance_filter_list(const struct can_r
 	val &= ~(RSCANFD_CFDGAFLCFGN_RNC_CHANNEL_MASK << shift);
 	/* Configure one rule for the channel */
 	val |= 1 << shift;
-	sys_write32(val, base_addr);
-	printk("[%s:%d] RSCANFD_CFDGAFLCFG%d apres = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(base_addr));
+	can_rcar_rscanfd_write(dev, base_offset, val);
 
 	/* A page contains 16 consecutive entries */
-	base_addr = config->reg + (config->channel * CAN_RCAR_RSCANFD_AFL_ENTRY_SIZE);
+	base_offset = config->channel * CAN_RCAR_RSCANFD_AFL_ENTRY_SIZE;
 	/* Clear the CAN ID as it won't be taken into account by the mask register */
-	sys_write32(0, base_addr + RSCANFD_CFDGAFLIDN);
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDGAFLIDN, 0);
 	/* Accept all received CAN frames */
-	sys_write32(0, base_addr + RSCANFD_CFDGAFLMN);
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDGAFLMN, 0);
 	/* Disable the DLC check */
-	sys_write32(0, base_addr + RSCANFD_CFDGAFLP0N); // TODO GAFLSRD1
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDGAFLP0N, 0); // TODO GAFLSRD1
 	/* Use the second Common FIFO dedicated to each channel as target for reception */
 	val = config->channel * CAN_RCAR_RSCANFD_COMMON_FIFO_PER_CHANNEL + 1;
-	sys_write32(0x100 << val, base_addr + RSCANFD_CFDGAFLP1N);
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDGAFLP1N, 0x100 << val);
 
 	/* Disable write access for page 0 */
-	sys_write32(0, config->reg + RSCANFD_CFDGAFLECTR);
+	can_rcar_rscanfd_write(dev, RSCANFD_CFDGAFLECTR, 0);
 }
 
-static void can_rcar_rscanfd_configure_fifo(const struct can_rcar_rscanfd_config *config)
+static inline void can_rcar_rscanfd_configure_fifo(const struct can_rcar_rscanfd_config *config)
 {
 	uint32_t base_addr;
 
@@ -528,8 +513,8 @@ static int can_rcar_rscanfd_configure_timing(const struct can_rcar_rscanfd_confi
 	uint32_t base_addr;
 
 	LOG_DBG("Set timing for channel %u, sjw=%u, prop_seg=%u, seg1=%u, seg2=%u, presc=%u.",
-		config->channel, timing->sjw, timing->prop_seg, timing->phase_seg1, timing->phase_seg2,
-		timing->prescaler);
+		config->channel, timing->sjw, timing->prop_seg, timing->phase_seg1,
+		timing->phase_seg2, timing->prescaler);
 
 	/* Each channel is handled by a group of four 4-byte registers */
 	base_addr = config->reg + (config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE);
@@ -569,9 +554,12 @@ static int can_rcar_rscanfd_get_capabilities(const struct device *dev, can_mode_
 {
 	ARG_UNUSED(dev);
 
-	printk("[%s:%d] entry\n", __func__, __LINE__);
-	// TODO
-	*cap = CAN_MODE_NORMAL | CAN_MODE_LOOPBACK | CAN_MODE_LISTENONLY | CAN_MODE_FD;
+	*cap = CAN_MODE_NORMAL | CAN_MODE_LOOPBACK | CAN_MODE_LISTENONLY;
+#ifdef CONFIG_CAN_FD_MODE
+	*cap |= CAN_MODE_FD;
+#endif
+
+	// TODO manual recovery ?
 
 	return 0;
 }
@@ -601,14 +589,10 @@ static int can_rcar_rscanfd_start(const struct device *dev)
 
 	CAN_STATS_RESET(dev);
 
-	printk("[%s:%d] reg av op 0x%08X\n", __func__, __LINE__, sys_read32(config->reg + 4));
-
 	ret = can_rcar_rscanfd_channel_enter_operation_mode(dev);
 	if (ret != 0) {
 		goto exit_unlock;
 	}
-
-	printk("[%s:%d] reg ap op 0x%08X\n", __func__, __LINE__, sys_read32(config->reg + 4));
 
 	/* The FIFOs can be enabled only when the channel is in operation mode */
 	can_rcar_rscanfd_set_fifo_enabled(dev, true);
@@ -1079,7 +1063,7 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 		return ret;
 	}
 
-	can_rcar_rscanfd_configure_acceptance_filter_list(config);
+	can_rcar_rscanfd_configure_acceptance_filter_list(dev);
 
 	can_rcar_rscanfd_configure_fifo(config);
 
@@ -1158,8 +1142,8 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 
 static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 	.get_capabilities = can_rcar_rscanfd_get_capabilities,
-	.start = can_rcar_rscanfd_start,
-	.stop = can_rcar_rscanfd_stop,
+	.start = can_rcar_rscanfd_start, // OK
+	.stop = can_rcar_rscanfd_stop, // OK
 	.set_mode = can_rcar_rscanfd_set_mode, // OK
 	.set_timing = can_rcar_rscanfd_set_timing,
 	.send = can_rcar_rscanfd_send,
@@ -1190,43 +1174,37 @@ static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 };
 
 /*
- * A CAN controller channel.
+ * A channel of the CAN controller.
  */
-#define RSCANFD_INIT(n)							\
-	PINCTRL_DT_INST_DEFINE(n);						\
-	\
-	static void can_rcar_rscanfd_configure_irq_##n(void) \
-	{ \
-		IRQ_CONNECT(DT_INST_IRQN(n), DT_INST_IRQ(n, priority), \
-			    can_rcar_rscanfd_isr, DEVICE_DT_INST_GET(n), 0); \
-		irq_enable(DT_INST_IRQN(n)); \
-	} \
-	\
-	static const struct can_rcar_rscanfd_config can_rcar_rscanfd_config_##n = {		\
-		.common = CAN_DT_DRIVER_CONFIG_INST_GET(n, 0, 1000000),		\
-		.global_dev = DEVICE_DT_GET(DT_INST_PARENT(n)), \
-		.reg = DT_REG_ADDR(DT_INST_PARENT(n)),				\
-		.channel = DT_INST_PROP(n, channel), \
-		/*.reg_size = DT_INST_REG_SIZE(n),*/				\
-		/*.init_func = can_rcar_##n##_init,*/				\
-		/*CAN_RCAR_INIT_CLOCKS(n),*/ 						\
-		/*.clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 0, name),*/ \
-		/*.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),*/		\
-		/*.bus_clk.rate = 40000000, TODO */					\
-		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n),			\
-		.configure_irq = can_rcar_rscanfd_configure_irq_##n \
-	};									\
-	BUILD_ASSERT(DT_INST_PROP(n, channel) < CAN_RCAR_RSCANFD_CHANNELS_COUNT, \
-		     "Channel number is invalid."); \
-	\
-	static struct can_rcar_rscanfd_data can_rcar_rscanfd_data_##n; \
-										\
+#define RSCANFD_INIT(n)									\
+	PINCTRL_DT_INST_DEFINE(n);							\
+											\
+	static void can_rcar_rscanfd_configure_irq_##n(void)				\
+	{										\
+		IRQ_CONNECT(DT_INST_IRQN(n), DT_INST_IRQ(n, priority),			\
+			    can_rcar_rscanfd_isr, DEVICE_DT_INST_GET(n), 0);		\
+		irq_enable(DT_INST_IRQN(n));						\
+	}										\
+											\
+	static const struct can_rcar_rscanfd_config can_rcar_rscanfd_config_##n = {	\
+		.common = CAN_DT_DRIVER_CONFIG_INST_GET(n, 0, 1000000),			\
+		.global_dev = DEVICE_DT_GET(DT_INST_PARENT(n)),				\
+		.reg = DT_REG_ADDR(DT_INST_PARENT(n)),					\
+		.channel = DT_INST_PROP(n, channel),					\
+		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n),				\
+		.configure_irq = can_rcar_rscanfd_configure_irq_##n			\
+	};										\
+	BUILD_ASSERT(DT_INST_PROP(n, channel) < CAN_RCAR_RSCANFD_CHANNELS_COUNT,	\
+		     "Channel number is invalid.");					\
+											\
+	static struct can_rcar_rscanfd_data can_rcar_rscanfd_data_##n;			\
+											\
 	CAN_DEVICE_DT_INST_DEFINE(n, can_rcar_rscanfd_init,				\
-				  NULL,						\
+				  NULL,							\
 				  &can_rcar_rscanfd_data_##n,				\
 				  &can_rcar_rscanfd_config_##n,				\
-				  POST_KERNEL,					\
-				  CONFIG_CAN_INIT_PRIORITY,			\
+				  POST_KERNEL,						\
+				  CONFIG_CAN_INIT_PRIORITY,				\
 				  &can_rcar_rscanfd_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(RSCANFD_INIT);
@@ -1243,8 +1221,6 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	struct can_rcar_rscanfd_global_data *data = dev->data;
 	int ret;
 
-	printk("[%s:%d] entry DRIVER CUSTOM\n", __func__, __LINE__);
-
 	if (!device_is_ready(config->clock_dev)) {
 		LOG_ERR("The clock device is not ready.");
 		return -ENODEV;
@@ -1258,9 +1234,10 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 
 	/* Make sure that the clock is fast enough for 8Mbit/s CAN-FD */
 	ret = clock_control_set_rate(config->clock_dev, config->global_clk,
-				     (clock_control_subsys_rate_t)CAN_RCAR_RSCANFD_MODULE_CLOCK_RATE);
+		(clock_control_subsys_rate_t)CAN_RCAR_RSCANFD_MODULE_CLOCK_RATE);
 	if (ret != 0) {
-		LOG_ERR("Failed to set the global clock rate to %u Hz.", CAN_RCAR_RSCANFD_MODULE_CLOCK_RATE);
+		LOG_ERR("Failed to set the global clock rate to %u Hz.",
+			CAN_RCAR_RSCANFD_MODULE_CLOCK_RATE);
 		return ret;
 	}
 
@@ -1271,7 +1248,8 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	}
 
 	/* Wait for the CAN RAM initialization to terminate */
-	ret = can_rcar_rscanfd_busy_wait(config->reg + RSCANFD_CFDGSTS, RSCANFD_CFDGSTS_GRAMINIT, 0);
+	ret = can_rcar_rscanfd_busy_wait(config->reg + RSCANFD_CFDGSTS,
+		RSCANFD_CFDGSTS_GRAMINIT, 0);
 	if (ret != 0) {
 		LOG_ERR("Internal RAM initialization took too long.");
 		return ret;
