@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-//#include <zephyr/device.h>
 #include <zephyr/drivers/can.h>
 #include <zephyr/drivers/can/transceiver.h>
 #include <zephyr/drivers/clock_control.h>
@@ -215,7 +214,6 @@ struct can_rcar_rscanfd_global_config {
 };
 
 struct can_rcar_rscanfd_global_data {
-	//sys_slist_t channels_dev_list;
 	struct k_mutex list_mutex;
 	const struct device *channel_dev[CAN_RCAR_RSCANFD_CHANNELS_COUNT];
 };
@@ -333,21 +331,6 @@ static int can_rcar_rscanfd_enter_reset_mode(const struct can_rcar_rscanfd_globa
  */
 static int can_rcar_rscanfd_channel_enter_halt_mode(const struct device *dev)
 {
-#if 0
-	uint32_t base_addr, val;
-
-	// TODO
-
-	/* The relevant registers are 4-byte wide and consecutive */
-	base_addr = config->reg + (config->channel * 4);
-
-	val = sys_read32(base_addr + RSCANFD_CFDCNCTR);
-	val &= ~(RSCANFD_CFDCNCTR_CHMDC_MASK << RSCANFD_CFDCNCTR_CHMDC_SHIFT);
-	val |= RSCANFD_CFDCNCTR_CHMDC_CHANNEL_HALT_REQUEST << RSCANFD_CFDCNCTR_CHMDC_SHIFT;
-	sys_write32(val, base_addr + RSCANFD_CFDCNCTR);
-
-	return can_rcar_rscanfd_busy_wait(base_addr + RSCANFD_CFDCNSTS, RSCANFD_CFDCNSTS_CHLTSTS, 1);
-#endif
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	uint32_t base_offset, val;
 
@@ -715,18 +698,9 @@ static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 
 	k_mutex_lock(&data->inst_mutex, K_FOREVER);
 
-	// TEST
-	/*ret = can_rcar_rscanfd_channel_enter_halt_mode(dev);
-	if (ret != 0) {
-		k_mutex_unlock(&data->inst_mutex);
-		return ret;
-	}*/
-
 	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNCTR);
-	printk("[%s:%d] CFDCNCTR avant tout 0x%08X\n", __func__, __LINE__, val);
 	val &= ~((RSCANFD_CFDCNCTR_CTMS_MASK << RSCANFD_CFDCNCTR_CTMS_SHIFT) |
 		(RSCANFD_CFDCNCTR_CTME_MASK << RSCANFD_CFDCNCTR_CTME_SHIFT));
-	printk("[%s:%d] CFDCNCTR nettoye 0x%08X\n", __func__, __LINE__, val);
 
 	if (mode & CAN_MODE_LOOPBACK) {
 		val |= (RSCANFD_CFDCNCTR_CTMS_INTERNAL_LOOPBACK_MODE << RSCANFD_CFDCNCTR_CTMS_SHIFT) |
@@ -739,7 +713,6 @@ static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 	else if (mode & CAN_MODE_NORMAL) {
 		val |= RSCANFD_CFDCNCTR_CTME_DISABLED << RSCANFD_CFDCNCTR_CTME_SHIFT;
 	}
-	printk("[%s:%d] CFDCNCTR avec nouveau mode 0x%08X\n", __func__, __LINE__, val);
 	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNCTR, val);
 
 
@@ -1078,6 +1051,12 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 
 	printk("[%s:%d] entry DRIVER CUSTOM CHANNEL %d\n", __func__, __LINE__, config->channel);
 
+	ret = pinctrl_apply_state(config->pcfg, PINCTRL_STATE_DEFAULT);
+	if (ret != 0) {
+		LOG_ERR("Failed to apply the pinctrl default state.");
+		return ret;
+	}
+
 	ret = can_rcar_rscanfd_channel_leave_sleep_mode(config);
 	if (ret != 0) {
 		return ret;
@@ -1105,18 +1084,6 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 		return ret;
 	}
 
-	// test passage en halt mode pour permettre config mode
-	/*ret = can_rcar_rscanfd_channel_enter_halt_mode(dev);
-	if (ret != 0) {
-		return ret;
-	}*/
-
-	/* No other mode can be set because TODO */
-	ret = can_rcar_rscanfd_set_mode(dev, CAN_MODE_NORMAL);
-	if (ret) {
-		return ret;
-	}
-
 	// TEST
 	//}
 
@@ -1129,7 +1096,6 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 	/* Register the channel device into the controller for later use */
 	k_mutex_lock(&global_data->list_mutex, K_FOREVER);
 	global_data->channel_dev[enabled_channels_count] = dev;
-	//sys_slist_append(&global_data->channels_dev_list,
 	k_mutex_unlock(&global_data->list_mutex);
 
 	/* Switch the controller to operation mode when all channels are initialized */
@@ -1142,15 +1108,11 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 			return ret;
 		}
 
-		/*ret = device_supported_foreach(config->global_dev,
-			can_rcar_rscanfd_channel_dev_visitor_callback, NULL);
-		if (ret != global_config->num_enabled_channels) {
-			LOG_ERR("Failed to switch each channel to halt mode.");
-			// TODO uninit ?
-			return ret;
-		}*/
-
 		/*
+		 * The channels must go to halt mode while they are not used, also because this
+		 * allows some additional channel configuration not possible in reset mode.
+		 * The controller needs to be in operation mode.
+		 *
 		 * Note : no need for mutex here, because only the last registered channel
 		 * init function can call this code.
 		 */
@@ -1158,6 +1120,14 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 			ret = can_rcar_rscanfd_channel_enter_halt_mode(global_data->channel_dev[i]);
 			if (ret != 0) {
 				LOG_ERR("Failed to switch the CAN device channel \"%s\" to halt mode.",
+					global_data->channel_dev[i]->name);
+				return ret;
+			}
+
+			/* Some working modes can only be set when the channel is in halt mode. */
+			ret = can_rcar_rscanfd_set_mode(dev, CAN_MODE_NORMAL);
+			if (ret) {
+				LOG_ERR("Failed to set the CAN device channel \"%s\" mode to normal.",
 					global_data->channel_dev[i]->name);
 				return ret;
 			}
@@ -1173,7 +1143,7 @@ static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 	.get_capabilities = can_rcar_rscanfd_get_capabilities,
 	.start = can_rcar_rscanfd_start,
 	.stop = can_rcar_rscanfd_stop,
-	.set_mode = can_rcar_rscanfd_set_mode,
+	.set_mode = can_rcar_rscanfd_set_mode, // OK
 	.set_timing = can_rcar_rscanfd_set_timing,
 	.send = can_rcar_rscanfd_send,
 	.add_rx_filter = can_rcar_rscanfd_add_rx_filter, // OK
@@ -1254,63 +1224,20 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 {
 	const struct can_rcar_rscanfd_global_config *config = dev->config;
 	struct can_rcar_rscanfd_global_data *data = dev->data;
-	//struct can_timing timing = { 0 };
 	int ret;
 
 	printk("[%s:%d] entry DRIVER CUSTOM\n", __func__, __LINE__);
-
-	/*k_mutex_init(&data->inst_mutex);
-	k_mutex_init(&data->rx_mutex);
-	k_sem_init(&data->tx_sem, RSCANFD_FIFO_DEPTH, RSCANFD_FIFO_DEPTH);
-
-	data->tx_head = 0;
-	data->tx_tail = 0;
-	data->tx_unsent = 0;
-
-	memset(data->rx_callback, 0, sizeof(data->rx_callback));
-	data->state = CAN_STATE_ERROR_ACTIVE;
-	data->common.state_change_cb = NULL;
-	data->common.state_change_cb_user_data = NULL;
-
-	if (config->common.phy != NULL && !device_is_ready(config->common.phy)) {
-		printk("[%s:%d] err\n", __func__, __LINE__);
-		LOG_ERR("CAN transceiver not ready");
-		return -ENODEV;
-	}*/
 
 	if (!device_is_ready(config->clock_dev)) {
 		LOG_ERR("The clock device is not ready.");
 		return -ENODEV;
 	}
 
-	/* Configure dt provided device signals when available */
-	/*ret = pinctrl_apply_state(config->pcfg, PINCTRL_STATE_DEFAULT);
-	if (ret != 0) {
-		LOG_ERR("Failed to apply the pinctrl state.");
-		return ret;
-	}*/
-
-	/* Reset the registers */
-	/*printk("[%s:%d] config->clock_dev=%p, config->clk=%p\n", __func__, __LINE__, config->clock_dev, config->clk);
-	ret = clock_control_off(config->clock_dev, config->clk);
-	if (ret != 0) {
-		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
-		return ret;
-	}*/
-
 	ret = clock_control_on(config->clock_dev, config->global_clk);
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the global clock on.");
 		return ret;
 	}
-
-	// TEST
-	/*{
-		uint32_t rate;
-		ret = clock_control_get_rate(config->clock_dev, config->global_clk, &rate);
-		if (ret != 0) printk("[%s:%d] err rate clock %d\n",  __func__, __LINE__, ret);
-		else printk("[%s:%d] rate clock avant %u\n",  __func__, __LINE__, rate);
-	}*/
 
 	/* Make sure that the clock is fast enough for 8Mbit/s CAN-FD */
 	ret = clock_control_set_rate(config->clock_dev, config->global_clk,
@@ -1320,14 +1247,6 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 		return ret;
 	}
 
-	// TEST
-	/*{
-		uint32_t rate;
-		ret = clock_control_get_rate(config->clock_dev, config->global_clk, &rate);
-		if (ret != 0) printk("[%s:%d] err rate clock %d\n",  __func__, __LINE__, ret);
-		else printk("[%s:%d] rate clock apres %u\n",  __func__, __LINE__, rate);
-	}*/
-
 	ret = clock_control_on(config->clock_dev, config->module_clk);
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the module clock on.");
@@ -1335,13 +1254,11 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	}
 
 	/* Wait for the CAN RAM initialization to terminate */
-	//printk("[%s:%d] avant init RAM\n",  __func__, __LINE__);
 	ret = can_rcar_rscanfd_busy_wait(config->reg + RSCANFD_CFDGSTS, RSCANFD_CFDGSTS_GRAMINIT, 0);
 	if (ret != 0) {
 		LOG_ERR("Internal RAM initialization took too long.");
 		return ret;
 	}
-	//printk("[%s:%d] apres init RAM\n",  __func__, __LINE__);
 
 	/* The CAN module registers can be configured only in reset mode */
 	ret = can_rcar_rscanfd_enter_reset_mode(config/*, false*/);
@@ -1352,109 +1269,7 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 
 	LOG_DBG("CAN controller IP version: 0x%08X.", sys_read32(config->reg + RSCANFD_CFDGIPV));
 
-	//sys_slist_init(&data->channels_dev_list);
 	k_mutex_init(&data->list_mutex);
-
-#if 0
-	ret = can_rcar_leave_sleep_mode(config);
-	__ASSERT(!ret, "Fail to leave CAN controller from sleep mode");
-	if (ret) {
-		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
-		return ret;
-	}
-
-	printk("[%s:%d] config->common.bitrate=%u, config->common.sample_point=%u\n", __func__, __LINE__, config->common.bitrate, config->common.sample_point);
-	ret = can_calc_timing(dev, &timing, config->common.bitrate,
-			      config->common.sample_point);
-	if (ret == -EINVAL) {
-		LOG_ERR("Can't find timing for given param");
-		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, -EIO);
-		return -EIO;
-	}
-
-	LOG_DBG("Presc: %d, TS1: %d, TS2: %d",
-		timing.prescaler, timing.phase_seg1, timing.phase_seg2);
-	LOG_DBG("Sample-point err : %d", ret);
-
-	ret = can_set_timing(dev, &timing);
-	if (ret) {
-		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
-		return ret;
-	}
-
-#ifdef CONFIG_SOC_SERIES_RCAR_GEN5
-	/* Disable the reception message buffers as FIFO is used instead */
-	sys_write32(0, config->reg_addr + RSCANFD_CFDRMNB);
-
-	/* Configure the reception FIFO, with a depth of 128 messages and 64 bytes per message */
-	sys_write32(
-		/*(FIELD_PREP(RSCANFD_CFDRFCC0_RFDC_MASK, RSCANFD_CFDRFCC0_RFDC_DEPTH_128) << RSCANFD_CFDRFCC0_RFDC_SHIFT) |
-		(FIELD_PREP(RSCANFD_CFDRFCC0_RFPLS_MASK, RSCANFD_CFDRFCC0_RFPLS_SIZE_64) << RSCANFD_CFDRFCC0_RFPLS_SHIFT) |
-		(FIELD_PREP(RSCANFD_CFDRFCC0_RFE_MASK, RSCANFD_CFDRFCC0_RFE_ENABLE) << RSCANFD_CFDRFCC0_RFE_SHIFT),*/
-		(RSCANFD_CFDRFCC0_RFDC_DEPTH_128 << RSCANFD_CFDRFCC0_RFDC_SHIFT) |
-		(RSCANFD_CFDRFCC0_RFPLS_SIZE_64 << RSCANFD_CFDRFCC0_RFPLS_SHIFT)/* |*/
-		/*(RSCANFD_CFDRFCC0_RFE_ENABLE << RSCANFD_CFDRFCC0_RFE_SHIFT)*/,
-		config->reg_addr + RSCANFD_CFDRFCC0);
-
-	/* Configure a common FIFO for transmission, with a depth of 128 messages and 64 bytes per message */
-	sys_write32(
-		/*FIELD_PREP(RSCANFD_CFDCFCC0_CFDC_MASK, RSCANFD_CFDCFCC0_CFDC_DEPTH_128) << RSCANFD_CFDCFCC0_CFDC_SHIFT) |
-		FIELD_PREP(RSCANFD_CFDCFCC0_CFM_MASK, RSCANFD_CFDCFCC0_CFM_TX) << RSCANFD_CFDCFCC0_CFM_SHIFT) |*/
-		(RSCANFD_CFDCFCC0_CFDC_DEPTH_128 << RSCANFD_CFDCFCC0_CFDC_SHIFT) |
-		(RSCANFD_CFDCFCC0_CFM_TX << RSCANFD_CFDCFCC0_CFM_SHIFT) |
-		(RSCANFD_CFDCFCC0_CFPLS_SIZE_64 << RSCANFD_CFDCFCC0_CFPLS_SHIFT) /*|*/
-		/*(RSCANFD_CFDCFCC0_CFE_ENABLE << RSCANFD_CFDCFCC0_CFE_SHIFT)*/,
-		config->reg_addr + RSCANFD_CFDCFCC0);
-#endif
-
-	ret = can_rcar_set_mode(dev, CAN_MODE_NORMAL);
-	if (ret) {
-		printk("[%s:%d] err ret=%d\n", __func__, __LINE__, ret);
-		return ret;
-	}
-
-	// TODO activ interrupts CFDRFCC0
-
-#ifndef CONFIG_SOC_SERIES_RCAR_GEN5
-	ctlr = can_rcar_read16(config, RSCANFD_CTLR);
-	ctlr |= RSCANFD_CTLR_IDFM_MIXED;       /* Select mixed ID mode */
-	ctlr &= ~RSCANFD_CTLR_BOM_ENT;         /* Clear entry to halt automatically at bus-off */
-	ctlr |= RSCANFD_CTLR_MBM;              /* Select FIFO mailbox mode */
-	ctlr |= RSCANFD_CTLR_MLM;              /* Overrun mode */
-	ctlr &= ~RSCANFD_CTLR_SLPM;            /* Clear CAN Sleep mode */
-	can_rcar_write16(config, RSCANFD_CTLR, ctlr);
-
-	/* Accept all SID and EID */
-	sys_write32(0, config->reg_addr + RSCANFD_MKR8);
-	sys_write32(0, config->reg_addr + RSCANFD_MKR9);
-	/* In FIFO mailbox mode, write "0" to bits 24 to 31 */
-	sys_write32(0, config->reg_addr + RSCANFD_MKIVLR0);
-	sys_write32(0, config->reg_addr + RSCANFD_MKIVLR1);
-	/* Accept standard and extended ID frames, but not
-	 * remote frame.
-	 */
-	sys_write32(0, config->reg_addr + RSCANFD_FIDCR0);
-	sys_write32(RSCANFD_FIDCR_IDE,
-		    config->reg_addr + RSCANFD_FIDCR1);
-
-	/* Enable and configure FIFO mailbox interrupts Rx and Tx */
-	sys_write32(RSCANFD_MIER1_RXFIE | RSCANFD_MIER1_TXFIE,
-		    config->reg_addr + RSCANFD_MIER1);
-
-	sys_write8(RSCANFD_IER_ERSIE | RSCANFD_IER_RXFIE | RSCANFD_IER_TXFIE,
-		   config->reg_addr + RSCANFD_IER);
-
-	/* Accumulate error codes */
-	sys_write8(RSCANFD_ECSR_EDPM, config->reg_addr + RSCANFD_ECSR);
-
-	/* Enable interrupts for all type of errors */
-	sys_write8(0xFF, config->reg_addr + RSCANFD_EIER);
-#endif
-
-	//config->init_func(dev);
-#endif
-
-	//printk("[%s:%d] fin OK\n", __func__, __LINE__);
 
 	return 0;
 }
