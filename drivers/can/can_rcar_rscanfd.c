@@ -380,45 +380,61 @@ static int can_rcar_rscanfd_channel_leave_sleep_mode(const struct can_rcar_rscan
 	return 0;
 }
 
-static int can_rcar_rscanfd_channel_enter_operation_mode(const struct can_rcar_rscanfd_config *config)
+static int can_rcar_rscanfd_channel_enter_operation_mode(const struct device *dev)
 {
-	uint32_t base_addr = config->reg + (config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE), val;
+	const struct can_rcar_rscanfd_config *config = dev->config;
+	uint32_t base_offset, val;
 	int ret;
 
-	/* Determine the current channel status */
-	/*val = sys_read32(base_addr + RSCANFD_CFDCNSTS);
-	if (val & RSCANFD_CFDCNSTS_CRSTSTS) {
-		status_bit = RSCANFD_CFDCNSTS_CRSTSTS*/
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
 
-	val = sys_read32(base_addr + RSCANFD_CFDCNCTR);
+	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNCTR);
 	val &= ~(RSCANFD_CFDCNCTR_CHMDC_MASK << RSCANFD_CFDCNCTR_CHMDC_SHIFT);
 	val |= RSCANFD_CFDCNCTR_CHMDC_CHANNEL_OPERATION_REQUEST << RSCANFD_CFDCNCTR_CHMDC_SHIFT;
-	sys_write32(val, base_addr + RSCANFD_CFDCNCTR);
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNCTR, val);
 
-	ret = can_rcar_rscanfd_busy_wait(base_addr + RSCANFD_CFDCNSTS, RSCANFD_CFDCNSTS_CRSTSTS, 0);
+	ret = can_rcar_rscanfd_busy_wait(config->reg + base_offset + RSCANFD_CFDCNSTS, RSCANFD_CFDCNSTS_CRSTSTS, 0);
 	if (ret != 0) {
 		LOG_ERR("Going from reset to operation mode for channel %u took too long.",
 			config->channel);
 		return ret;
 	}
-	ret = can_rcar_rscanfd_busy_wait(base_addr + RSCANFD_CFDCNSTS, RSCANFD_CFDCNSTS_CHLTSTS, 0);
+	ret = can_rcar_rscanfd_busy_wait(config->reg + base_offset + RSCANFD_CFDCNSTS, RSCANFD_CFDCNSTS_CHLTSTS, 0);
 	if (ret != 0) {
 		LOG_ERR("Going from halt to operation mode for channel %u took too long.",
 			config->channel);
 		return ret;
 	}
-	// TODO sleep ?
-
-	/* Wait for the controller to apply the new state */
-	/*for (int i = 0; i < MAX_STR_READS; i++) {
-		if (!(sys_read32(config->reg_addr + RSCANFD_CFDCNSTS) & RSCANFD_CFDCNSTS_CSLPSTS)) {
-			printk("[%s:%d] RSCANFD_CFDCNCTR OK\n", __func__, __LINE__);
-			return 0;
-		}
-	}*/
-	//printk("[%s:%d] entry RSCANFD_CFDCNSTS apres = 0x%08X\n", __func__, __LINE__, sys_read32(base_addr + RSCANFD_CFDCNSTS));
 
 	return 0;
+}
+
+static void can_rcar_rscanfd_set_fifo_enabled(const struct device *dev, bool enabled)
+{
+	const struct can_rcar_rscanfd_config *config = dev->config;
+	uint32_t base_offset, val, state_mask;
+
+	if (enabled) {
+		state_mask = RSCANFD_CFDCFCCN_CFE_ENABLE;
+	}
+	else {
+		state_mask = RSCANFD_CFDCFCCN_CFE_DISABLE;
+	}
+	state_mask <<= RSCANFD_CFDCFCCN_CFE_SHIFT;
+
+	/* The first Common FIFO dedicated to the channel is used for transmission */
+	base_offset = config->channel * sizeof(uint32_t) * CAN_RCAR_RSCANFD_COMMON_FIFO_PER_CHANNEL;
+	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCFCCN);
+	val &= ~(RSCANFD_CFDCFCCN_CFE_MASK << RSCANFD_CFDCFCCN_CFE_SHIFT);
+	val |= state_mask;
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFCCN, val);
+
+	/* The second Common FIFO dedicated to the channel is used for reception */
+	base_offset += sizeof(uint32_t);
+	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCFCCN);
+	val &= ~(RSCANFD_CFDCFCCN_CFE_MASK << RSCANFD_CFDCFCCN_CFE_SHIFT);
+	val |= state_mask;
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFCCN, val);
 }
 
 /**
@@ -564,7 +580,6 @@ static int can_rcar_rscanfd_start(const struct device *dev)
 {
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	struct can_rcar_rscanfd_data *data = dev->data;
-	uint32_t base_addr, val;
 	int ret;
 
 	printk("[%s:%d] entry canal %u\n", __func__, __LINE__, config->channel);
@@ -588,7 +603,7 @@ static int can_rcar_rscanfd_start(const struct device *dev)
 
 	printk("[%s:%d] reg av op 0x%08X\n", __func__, __LINE__, sys_read32(config->reg + 4));
 
-	ret = can_rcar_rscanfd_channel_enter_operation_mode(config);
+	ret = can_rcar_rscanfd_channel_enter_operation_mode(dev);
 	if (ret != 0) {
 		goto exit_unlock;
 	}
@@ -596,20 +611,7 @@ static int can_rcar_rscanfd_start(const struct device *dev)
 	printk("[%s:%d] reg ap op 0x%08X\n", __func__, __LINE__, sys_read32(config->reg + 4));
 
 	/* The FIFOs can be enabled only when the channel is in operation mode */
-	/* Transmission FIFO, the first Common FIFO dedicated to the channel */
-	base_addr = config->reg +
-		(config->channel * sizeof(uint32_t) * CAN_RCAR_RSCANFD_COMMON_FIFO_PER_CHANNEL);
-	val = sys_read32(base_addr + RSCANFD_CFDCFCCN);
-	val &= ~(RSCANFD_CFDCFCCN_CFE_MASK << RSCANFD_CFDCFCCN_CFE_SHIFT);
-	val |= RSCANFD_CFDCFCCN_CFE_ENABLE << RSCANFD_CFDCFCCN_CFE_SHIFT;
-	sys_write32(val, base_addr + RSCANFD_CFDCFCCN);
-
-	/* Reception FIFO, the second Common FIFO dedicated to the channel */
-	base_addr += sizeof(uint32_t);
-	val = sys_read32(base_addr + RSCANFD_CFDCFCCN);
-	val &= ~(RSCANFD_CFDCFCCN_CFE_MASK << RSCANFD_CFDCFCCN_CFE_SHIFT);
-	val |= RSCANFD_CFDCFCCN_CFE_ENABLE << RSCANFD_CFDCFCCN_CFE_SHIFT;
-	sys_write32(val, base_addr + RSCANFD_CFDCFCCN);
+	can_rcar_rscanfd_set_fifo_enabled(dev, true);
 
 	data->common.started = true;
 
@@ -636,9 +638,9 @@ static int can_rcar_rscanfd_stop(const struct device *dev)
 		return -EALREADY;
 	}
 
-	// TODO
-	//k_mutex_lock(&data->inst_mutex, K_FOREVER);
+	k_mutex_lock(&data->inst_mutex, K_FOREVER);
 
+	/* Terminate the ongoing transmission */
 	ret = can_rcar_rscanfd_channel_enter_halt_mode(dev);
 	if (ret != 0) {
 		return ret;
@@ -647,14 +649,19 @@ static int can_rcar_rscanfd_stop(const struct device *dev)
 	if (config->common.phy != NULL) {
 		ret = can_transceiver_disable(config->common.phy);
 		if (ret != 0) {
-			LOG_ERR("Failed to disable CAN transceiver (%d).", ret);
-			return ret;
+			LOG_ERR("Failed to disable the CAN transceiver (%d).", ret);
+			goto exit_unlock;
 		}
 	}
 
+	/* Stop transmitting and receiving */
+	can_rcar_rscanfd_set_fifo_enabled(dev, false);
 
+	data->common.started = false;
 
-	// TODO
+exit_unlock:
+	k_mutex_unlock(&data->inst_mutex);
+
 	return 0;
 }
 

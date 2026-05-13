@@ -40,7 +40,7 @@ int main(void)
 
 	printk("TEST CAN sur %s\n", CONFIG_BOARD_TARGET);
 
-	ret = can_set_mode(can_dev, CAN_MODE_LISTENONLY);
+	ret = can_set_mode(can_dev, CAN_MODE_LOOPBACK);
 	if (ret != 0)
 	{
 		printk("err can_set_mode() %d.\n", ret);
@@ -54,13 +54,26 @@ int main(void)
 		return 0;
 	}
 
-	/*ret = can_stop(can_dev);
+	ret = can_stop(can_dev);
 	if (ret != 0)
 	{
 		printk("err can_stop() %d.\n", ret);
 		return 0;
 	}
-	return 0;*/
+
+	ret = can_set_mode(can_dev, CAN_MODE_NORMAL);
+	if (ret != 0)
+	{
+		printk("err can_set_mode() %d.\n", ret);
+		return 0;
+	}
+
+	ret = can_start(can_dev);
+	if (ret != 0)
+	{
+		printk("err can_start() %d.\n", ret);
+		return 0;
+	}
 
 	// Receive all frames
 	filter.id = 0;
