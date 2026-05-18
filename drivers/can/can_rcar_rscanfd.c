@@ -346,18 +346,18 @@ static int can_rcar_rscanfd_enter_operation_mode(const struct can_rcar_rscanfd_g
 	return can_rcar_rscanfd_busy_wait(config->reg + RSCANFD_CFDGSTS, RSCANFD_CFDGSTS_GRSTSTS, 0);
 }
 
-static int can_rcar_rscanfd_channel_leave_sleep_mode(const struct can_rcar_rscanfd_config *config)
+static int can_rcar_rscanfd_channel_leave_sleep_mode(const struct device *dev)
 {
-	uint32_t base_addr = config->reg + (config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE);
+	const struct can_rcar_rscanfd_config *config = dev->config;
+	uint32_t base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
 	int ret;
 
-	/* Release the channel from sleep mode, resetting all other fields in the same time. */
-	//printk("[%s:%d] entry RSCANFD_CFDCNCTR avant = 0x%08X\n", __func__, __LINE__, sys_read32(base_addr + RSCANFD_CFDCNCTR));
-	//printk("[%s:%d] entry RSCANFD_CFDCNSTS avant = 0x%08X\n", __func__, __LINE__, sys_read32(base_addr + RSCANFD_CFDCNSTS));
-	sys_write32(RSCANFD_CFDCNCTR_CHMDC_CHANNEL_RESET_REQUEST << RSCANFD_CFDCNCTR_CHMDC_SHIFT,
-		    base_addr + RSCANFD_CFDCNCTR);
+	/* Release the channel from sleep mode, resetting all other fields at the same time. */
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNCTR,
+		RSCANFD_CFDCNCTR_CHMDC_CHANNEL_RESET_REQUEST << RSCANFD_CFDCNCTR_CHMDC_SHIFT);
 
-	ret = can_rcar_rscanfd_busy_wait(base_addr + RSCANFD_CFDCNSTS, RSCANFD_CFDCNSTS_CSLPSTS, 0);
+	ret = can_rcar_rscanfd_busy_wait(config->reg + base_offset + RSCANFD_CFDCNSTS,
+		RSCANFD_CFDCNSTS_CSLPSTS, 0);
 	if (ret != 0) {
 		LOG_ERR("Leaving the sleep mode for channel %u took too long.", config->channel);
 		return ret;
@@ -470,36 +470,36 @@ static inline void can_rcar_rscanfd_configure_acceptance_filter_list(const struc
 	can_rcar_rscanfd_write(dev, RSCANFD_CFDGAFLECTR, 0);
 }
 
-static inline void can_rcar_rscanfd_configure_fifo(const struct can_rcar_rscanfd_config *config)
+static inline void can_rcar_rscanfd_configure_fifo(const struct device *dev)
 {
-	uint32_t base_addr;
+	const struct can_rcar_rscanfd_config *config = dev->config;
+	uint32_t base_offset;
 
 	/* Use the first Common FIFO from the several available for each channel. */
-	base_addr = config->reg +
-		(config->channel * sizeof(uint32_t) * CAN_RCAR_RSCANFD_COMMON_FIFO_PER_CHANNEL);
+	base_offset = config->channel * sizeof(uint32_t) * CAN_RCAR_RSCANFD_COMMON_FIFO_PER_CHANNEL;
 
 	/* Dedicate the first Common FIFO to transmission */
-	sys_write32(RSCANFD_CFDCFCCN_CFDC_DEPTH_64 << RSCANFD_CFDCFCCN_CFDC_SHIFT |
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFCCN,
+		RSCANFD_CFDCFCCN_CFDC_DEPTH_64 << RSCANFD_CFDCFCCN_CFDC_SHIFT |
 		RSCANFD_CFDCFCCN_CFIM_EVERY_MESSAGE << RSCANFD_CFDCFCCN_CFIM_SHIFT |
 		RSCANFD_CFDCFCCN_CFM_TX << RSCANFD_CFDCFCCN_CFM_SHIFT |
 		RSCANFD_CFDCFCCN_CFPLS_SIZE_64 << RSCANFD_CFDCFCCN_CFPLS_SHIFT |
 		RSCANFD_CFDCFCCN_CFTXIE_INT_ENABLED << RSCANFD_CFDCFCCN_CFTXIE_SHIFT |
-		RSCANFD_CFDCFCCN_CFE_DISABLE << RSCANFD_CFDCFCCN_CFE_SHIFT,
-		base_addr + RSCANFD_CFDCFCCN); // TODO transmission delay dans param DT ? int
+		RSCANFD_CFDCFCCN_CFE_DISABLE << RSCANFD_CFDCFCCN_CFE_SHIFT); // TODO transmission delay dans param DT ? int
 
 	/* Allow transmitting from the Common FIFO */
-	sys_write32(RSCANFD_CFDCFCCEN_CFBME_ENABLE << RSCANFD_CFDCFCCEN_CFBME_SHIFT,
-		base_addr + RSCANFD_CFDCFCCEN);
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFCCEN,
+		RSCANFD_CFDCFCCEN_CFBME_ENABLE << RSCANFD_CFDCFCCEN_CFBME_SHIFT);
 
 	/* Use the second Common FIFO for reception */
-	base_addr += sizeof(uint32_t);
-	sys_write32(RSCANFD_CFDCFCCN_CFDC_DEPTH_64 << RSCANFD_CFDCFCCN_CFDC_SHIFT |
+	base_offset += sizeof(uint32_t);
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFCCN,
+		RSCANFD_CFDCFCCN_CFDC_DEPTH_64 << RSCANFD_CFDCFCCN_CFDC_SHIFT |
 		RSCANFD_CFDCFCCN_CFIM_EVERY_MESSAGE << RSCANFD_CFDCFCCN_CFIM_SHIFT |
 		RSCANFD_CFDCFCCN_CFM_RX << RSCANFD_CFDCFCCN_CFM_SHIFT |
 		RSCANFD_CFDCFCCN_CFPLS_SIZE_64 << RSCANFD_CFDCFCCN_CFPLS_SHIFT |
 		RSCANFD_CFDCFCCN_CFRXIE_INT_ENABLED << RSCANFD_CFDCFCCN_CFRXIE_SHIFT |
-		RSCANFD_CFDCFCCN_CFE_DISABLE << RSCANFD_CFDCFCCN_CFE_SHIFT,
-		base_addr + RSCANFD_CFDCFCCN);
+		RSCANFD_CFDCFCCN_CFE_DISABLE << RSCANFD_CFDCFCCN_CFE_SHIFT);
 }
 
 /**
@@ -507,17 +507,18 @@ static inline void can_rcar_rscanfd_configure_fifo(const struct can_rcar_rscanfd
  *
  * @note The channel must already be in Reset or Halt state.
  */
-static int can_rcar_rscanfd_configure_timing(const struct can_rcar_rscanfd_config *config,
+static int can_rcar_rscanfd_configure_timing(const struct device *dev,
 					     const struct can_timing *timing)
 {
-	uint32_t base_addr;
+	const struct can_rcar_rscanfd_config *config = dev->config;
+	uint32_t base_offset;
 
 	LOG_DBG("Set timing for channel %u, sjw=%u, prop_seg=%u, seg1=%u, seg2=%u, presc=%u.",
 		config->channel, timing->sjw, timing->prop_seg, timing->phase_seg1,
 		timing->phase_seg2, timing->prescaler);
 
 	/* Each channel is handled by a group of four 4-byte registers */
-	base_addr = config->reg + (config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE);
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
 
 	// TODO prop seg
 	if ((timing->sjw < 1) || (timing->sjw > 128)) {
@@ -537,11 +538,11 @@ static int can_rcar_rscanfd_configure_timing(const struct can_rcar_rscanfd_confi
 		LOG_DBG("Invalid prescaler setting %u.\n", timing->prescaler);
 		return -EINVAL;
 	}
-	sys_write32((timing->phase_seg1 - 1) << RSCANFD_CFDCNNCFG_NTSEG1_SHIFT |
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNNCFG,
+		(timing->phase_seg1 - 1) << RSCANFD_CFDCNNCFG_NTSEG1_SHIFT |
 		(timing->phase_seg2 - 1) << RSCANFD_CFDCNNCFG_NTSEG2_SHIFT |
 		timing->sjw << RSCANFD_CFDCNNCFG_NSJW_SHIFT |
-		(timing->prescaler - 1) << RSCANFD_CFDCNNCFG_NBRP_SHIFT,
-		base_addr + RSCANFD_CFDCNNCFG);
+		(timing->prescaler - 1) << RSCANFD_CFDCNNCFG_NBRP_SHIFT);
 
 	// TODO CFDCnCTR
 
@@ -654,7 +655,6 @@ static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	struct can_rcar_rscanfd_data *data = dev->data;
 	uint32_t base_offset, val_rx, val_tx;
-	int ret;
 
 	LOG_DBG("Set mode %u for channel %u (current mode is %u).",
 		mode, config->channel, data->common.mode);
@@ -736,24 +736,38 @@ static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 static int can_rcar_rscanfd_set_timing(const struct device *dev, const struct can_timing *timing)
 {
 	const struct can_rcar_rscanfd_config *config = dev->config;
+	struct can_rcar_rscanfd_data *data = dev->data;
 	int ret;
 
-	// TODO verif init OK ?
+	if (data->common.started) {
+		return -EBUSY;
+	}
 
-	// TODO reset mode, avec
+	k_mutex_lock(&data->inst_mutex, K_FOREVER);
 
-	/*ret = can_rcar_rscanfd_channel_enter_halt_mode(config); // TODO
+	/* The timing registers can only be changed in channel reset or halt modes */
+	ret = can_rcar_rscanfd_channel_enter_halt_mode(dev);
 	if (ret != 0) {
-		return -EIO;
-	}*/
+		ret = -EIO;
+		goto exit_unlock;
+	}
 
-	// TODO
-	return 0;
+	ret = can_rcar_rscanfd_configure_timing(dev, timing);
+	if (ret != 0) {
+		goto exit_unlock;
+	}
+
+	ret = 0;
+
+exit_unlock:
+	k_mutex_unlock(&data->inst_mutex);
+
+	return ret;
 }
 
 static int can_rcar_rscanfd_send(const struct device *dev, const struct can_frame *frame,
-			    k_timeout_t timeout, can_tx_callback_t callback,
-			    void *user_data)
+				 k_timeout_t timeout, can_tx_callback_t callback,
+				 void *user_data)
 {
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	struct can_rcar_rscanfd_data *data = dev->data;
@@ -892,8 +906,8 @@ static void can_rcar_rscanfd_remove_rx_filter(const struct device *dev, int filt
 	k_mutex_unlock(&data->rx_mutex);
 }
 
-static int can_rscanfd_get_state(const struct device *dev, enum can_state *state,
-			      struct can_bus_err_cnt *err_cnt)
+static int can_rcar_rscanfd_get_state(const struct device *dev, enum can_state *state,
+				 struct can_bus_err_cnt *err_cnt)
 {
 	printk("[%s:%d] entry\n", __func__, __LINE__);
 	// TODO
@@ -1058,14 +1072,14 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 		return ret;
 	}
 
-	ret = can_rcar_rscanfd_channel_leave_sleep_mode(config);
+	ret = can_rcar_rscanfd_channel_leave_sleep_mode(dev);
 	if (ret != 0) {
 		return ret;
 	}
 
 	can_rcar_rscanfd_configure_acceptance_filter_list(dev);
 
-	can_rcar_rscanfd_configure_fifo(config);
+	can_rcar_rscanfd_configure_fifo(dev);
 
 	// TEST
 	/*if (config->channel == 0) {
@@ -1080,7 +1094,7 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 	//LOG_DBG("Prescaler: %d, TS1: %d, TS2: %d, Sample-point error: %d.",
 	//	timing.prescaler, timing.phase_seg1, timing.phase_seg2, ret); // REDONDANT
 
-	ret = can_rcar_rscanfd_configure_timing(config, &timing);
+	ret = can_rcar_rscanfd_configure_timing(dev, &timing);
 	if (ret != 0) {
 		return ret;
 	}
@@ -1149,7 +1163,7 @@ static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 	.send = can_rcar_rscanfd_send,
 	.add_rx_filter = can_rcar_rscanfd_add_rx_filter, // OK
 	.remove_rx_filter = can_rcar_rscanfd_remove_rx_filter, // OK
-	.get_state = can_rscanfd_get_state,
+	.get_state = can_rcar_rscanfd_get_state,
 /*#ifdef CONFIG_CAN_MANUAL_RECOVERY_MODE
 	.recover = can_rcar_recover,
 #endif*/ /* CONFIG_CAN_MANUAL_RECOVERY_MODE */

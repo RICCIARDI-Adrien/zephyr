@@ -37,10 +37,11 @@ int main(void)
 	int ret, cnt = 1;
 	struct can_frame frame;
 	struct can_filter filter;
+	struct can_timing timing;
 
 	printk("TEST CAN sur %s\n", CONFIG_BOARD_TARGET);
 
-	ret = can_set_mode(can_dev, CAN_MODE_LOOPBACK);
+	/*ret = can_set_mode(can_dev, CAN_MODE_LOOPBACK);
 	if (ret != 0)
 	{
 		printk("err can_set_mode() %d.\n", ret);
@@ -65,6 +66,20 @@ int main(void)
 	if (ret != 0)
 	{
 		printk("err can_set_mode() %d.\n", ret);
+		return 0;
+	}*/
+
+	ret = can_calc_timing(can_dev, &timing, 1000000, 0);
+	if (ret < 0)
+	{
+		printk("err can_calc_timing() %d.\n", ret);
+		return 0;
+	}
+
+	ret = can_set_timing(can_dev, &timing);
+	if (ret != 0)
+	{
+		printk("err can_set_timing() %d.\n", ret);
 		return 0;
 	}
 
