@@ -539,7 +539,7 @@ static int can_rcar_rscanfd_configure_timing(const struct device *dev,
 		return -EINVAL;
 	}
 	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNNCFG,
-		(timing->phase_seg1 - 1) << RSCANFD_CFDCNNCFG_NTSEG1_SHIFT |
+		(timing->phase_seg1 + timing->prop_seg - 1) << RSCANFD_CFDCNNCFG_NTSEG1_SHIFT |
 		(timing->phase_seg2 - 1) << RSCANFD_CFDCNNCFG_NTSEG2_SHIFT |
 		timing->sjw << RSCANFD_CFDCNNCFG_NSJW_SHIFT |
 		(timing->prescaler - 1) << RSCANFD_CFDCNNCFG_NBRP_SHIFT);
@@ -556,6 +556,7 @@ static int can_rcar_rscanfd_get_capabilities(const struct device *dev, can_mode_
 	ARG_UNUSED(dev);
 
 	*cap = CAN_MODE_NORMAL | CAN_MODE_LOOPBACK | CAN_MODE_LISTENONLY;
+
 #ifdef CONFIG_CAN_FD_MODE
 	*cap |= CAN_MODE_FD;
 #endif
@@ -1155,35 +1156,34 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 }
 
 static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
-	.get_capabilities = can_rcar_rscanfd_get_capabilities,
+	.get_capabilities = can_rcar_rscanfd_get_capabilities, // OK
 	.start = can_rcar_rscanfd_start, // OK
 	.stop = can_rcar_rscanfd_stop, // OK
 	.set_mode = can_rcar_rscanfd_set_mode, // OK
-	.set_timing = can_rcar_rscanfd_set_timing,
+	.set_timing = can_rcar_rscanfd_set_timing, // OK
 	.send = can_rcar_rscanfd_send,
 	.add_rx_filter = can_rcar_rscanfd_add_rx_filter, // OK
 	.remove_rx_filter = can_rcar_rscanfd_remove_rx_filter, // OK
-	.get_state = can_rcar_rscanfd_get_state,
 /*#ifdef CONFIG_CAN_MANUAL_RECOVERY_MODE
 	.recover = can_rcar_recover,
 #endif*/ /* CONFIG_CAN_MANUAL_RECOVERY_MODE */
+	.get_state = can_rcar_rscanfd_get_state,
 	//.set_state_change_callback = can_rcar_set_state_change_callback,
 	.get_core_clock = can_rcar_rscanfd_get_core_clock, // OK
 	.get_max_filters = can_rcar_rscanfd_get_max_filters, // OK
-	// TODO
-	.timing_min = {
-		.sjw = 0x1,
-		.prop_seg = 0x00,
-		.phase_seg1 = 0x04,
-		.phase_seg2 = 0x02,
-		.prescaler = 0x01
+	.timing_min = { // OK
+		.sjw = 1,
+		.prop_seg = 0,
+		.phase_seg1 = 2,
+		.phase_seg2 = 2,
+		.prescaler = 1
 	},
-	.timing_max = {
-		.sjw = 0x4,
-		.prop_seg = 0x00,
-		.phase_seg1 = 0x10,
-		.phase_seg2 = 0x08,
-		.prescaler = 0x400
+	.timing_max = { // OK
+		.sjw = 128,
+		.prop_seg = 0,
+		.phase_seg1 = 256,
+		.phase_seg2 = 128,
+		.prescaler = 1024
 	}
 };
 
