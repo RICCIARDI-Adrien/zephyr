@@ -10,7 +10,7 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/sys/__assert.h>
+//#include <zephyr/sys/__assert.h>
 
 LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 
@@ -18,9 +18,9 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 
 // TODO MMIO
 
-/* Channel N Nominal Bitrate Configuration Register */
+/* Channel n Nominal Bitrate Configuration Register */
 #define RSCANFD_CFDCNNCFG 0x0000
-/* Channel N Nominal Bitrate Configuration Register bits */
+/* Channel n Nominal Bitrate Configuration Register bits */
 #define RSCANFD_CFDCNNCFG_NBRP_MASK 0x3FF
 #define RSCANFD_CFDCNNCFG_NBRP_SHIFT 0
 #define RSCANFD_CFDCNNCFG_NSJW_MASK 0x07F
@@ -41,6 +41,12 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 #define RSCANFD_CFDCNCTR_CTME_SHIFT 24
 #define RSCANFD_CFDCNCTR_CTME_DISABLED 0
 #define RSCANFD_CFDCNCTR_CTME_ENABLED 1
+#define RSCANFD_CFDCNCTR_ALIE BIT(15)
+#define RSCANFD_CFDCNCTR_BORIE BIT(12)
+#define RSCANFD_CFDCNCTR_BOEIE BIT(11)
+#define RSCANFD_CFDCNCTR_EPIE BIT(10)
+#define RSCANFD_CFDCNCTR_EWIE BIT(9)
+#define RSCANFD_CFDCNCTR_BEIE BIT(8)
 #define RSCANFD_CFDCNCTR_CHMDC_MASK 0x03
 #define RSCANFD_CFDCNCTR_CHMDC_SHIFT 0
 #define RSCANFD_CFDCNCTR_CHMDC_CHANNEL_OPERATION_REQUEST 0
@@ -50,9 +56,30 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 /* Channel n Status Register */
 #define RSCANFD_CFDCNSTS 0x0008
 /* Channel n Status Register bits */
+#define RSCANFD_CFDCNSTS_TEC_MASK 0xFF
+#define RSCANFD_CFDCNSTS_TEC_SHIFT 24
+#define RSCANFD_CFDCNSTS_REC_MASK 0xFF
+#define RSCANFD_CFDCNSTS_REC_SHIFT 16
 #define RSCANFD_CFDCNSTS_CSLPSTS BIT(2)
 #define RSCANFD_CFDCNSTS_CHLTSTS BIT(1)
 #define RSCANFD_CFDCNSTS_CRSTSTS BIT(0)
+
+/* Channel n Error Flag Register */
+#define RSCANFD_CFDCNERFL 0x000C
+/* Channel n Error Flag Register bits */
+#define RSCANFD_CFDCNERFL_ADERR BIT(14)
+#define RSCANFD_CFDCNERFL_B0ERR BIT(13)
+#define RSCANFD_CFDCNERFL_B1ERR BIT(12)
+#define RSCANFD_CFDCNERFL_CERR BIT(11)
+#define RSCANFD_CFDCNERFL_AERR BIT(10)
+#define RSCANFD_CFDCNERFL_FERR BIT(9)
+#define RSCANFD_CFDCNERFL_SERR BIT(8)
+#define RSCANFD_CFDCNERFL_ALF BIT(7)
+#define RSCANFD_CFDCNERFL_BORF BIT(4)
+#define RSCANFD_CFDCNERFL_BOEF BIT(3)
+#define RSCANFD_CFDCNERFL_EPF BIT(2)
+#define RSCANFD_CFDCNERFL_EWF BIT(1)
+#define RSCANFD_CFDCNERFL_BEF BIT(0)
 
 /* Global IP Version Register */
 #define RSCANFD_CFDGIPV 0x0080
@@ -85,9 +112,9 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 /* RX Message Buffer Number Register */
 #define RSCANFD_CFDRMNB 0x00AC
 
-/* RX FIFO Configuration / Control Register N */
+/* RX FIFO Configuration / Control Register n */
 #define RSCANFD_CFDRFCCN 0x00C0
-/* RX FIFO Configuration / Control Register N bits */
+/* RX FIFO Configuration / Control Register n bits */
 #define RSCANFD_CFDRFCCN_RFIM_SHIFT 12
 #define RSCANFD_CFDRFCCN_RFIM_EVERY_MESSAGE 1
 #define RSCANFD_CFDRFCCN_RFDC_MASK 0x07
@@ -104,9 +131,9 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 #define RSCANFD_CFDRFCCN_RFE_DISABLE 0
 #define RSCANFD_CFDRFCCN_RFE_ENABLE 1
 
-/* Common FIFO Configuration / Control Register N */
+/* Common FIFO Configuration / Control Register n */
 #define RSCANFD_CFDCFCCN 0x0120
-/* Common FIFO Configuration / Control Register N bits */
+/* Common FIFO Configuration / Control Register n bits */
 #define RSCANFD_CFDCFCCN_CFDC_MASK 0x03
 #define RSCANFD_CFDCFCCN_CFDC_SHIFT 21
 #define RSCANFD_CFDCFCCN_CFDC_DEPTH_64 0x06
@@ -129,13 +156,13 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 #define RSCANFD_CFDCFCCN_CFE_DISABLE 0
 #define RSCANFD_CFDCFCCN_CFE_ENABLE 1
 
-/* Common FIFO Configuration / Control Enhancement Register N */
+/* Common FIFO Configuration / Control Enhancement Register n */
 #define RSCANFD_CFDCFCCEN 0x0180
-/* Common FIFO Configuration / Control Enhancement Register N bits */
+/* Common FIFO Configuration / Control Enhancement Register n bits */
 #define RSCANFD_CFDCFCCEN_CFBME_SHIFT 16
 #define RSCANFD_CFDCFCCEN_CFBME_ENABLE 0
 
-/* Common FIFO Status Registers N */
+/* Common FIFO Status Registers n */
 #define RSCANFD_CFDCFSTSN 0x01E0
 /* Common FIFO Status Registers N bits */
 #define RSCANFD_CFDCFSTSN_CFTXIF BIT(4)
@@ -147,42 +174,42 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 /* Common FIFO Pointer Control Register 1 */
 #define RSCANFD_CFDCFPCTR1 0x0244
 
-/* Global Acceptance Filter List ID Register N */
+/* Global Acceptance Filter List ID Register n */
 #define RSCANFD_CFDGAFLIDN 0x1800
 
-/* Global Acceptance Filter List Mask Register N */
+/* Global Acceptance Filter List Mask Register n */
 #define RSCANFD_CFDGAFLMN 0x1804
 
-/* Global Acceptance Filter List Pointer 0 Register N */
+/* Global Acceptance Filter List Pointer 0 Register n */
 #define RSCANFD_CFDGAFLP0N 0x1808
 
 /* Global Acceptance Filter List Pointer 1 Register N */
 #define RSCANFD_CFDGAFLP1N 0x180C
 
-/* Common FIFO Access ID Registers B N */
+/* Common FIFO Access ID Registers b n */
 #define RSCANFD_CFDCFIDBN 0x6400
-/* Common FIFO Access ID Registers B N bits */
+/* Common FIFO Access ID Registers b n bits */
 #define RSCANFD_CFDCFIDBN_CFIDE BIT(31)
 #define RSCANFD_CFDCFIDBN_CFRTR BIT(30)
 #define RSCANFD_CFDCFIDBN_CFID_MASK 0x1FFFFFFF
 #define RSCANFD_CFDCFIDBN_CFID_SHIFT 0
 
-/* Common FIFO Access Pointer Registers B N */
+/* Common FIFO Access Pointer Registers b n */
 #define RSCANFD_CFDCFPTRBN 0x6404
-/* Common FIFO Access Pointer Registers B N bits */
+/* Common FIFO Access Pointer Registers b n bits */
 #define RSCANFD_CFDCFPTRBN_CFDLC_MASK 0x0F
 #define RSCANFD_CFDCFPTRBN_CFDLC_SHIFT 28
 #define RSCANFD_CFDCFPTRBN_CFTS_MASK 0xFFFF
 #define RSCANFD_CFDCFPTRBN_CFTS_SHIFT 0
 
-/* Common FIFO Access CAN-FD Control/Status Register B N */
+/* Common FIFO Access CAN-FD Control/Status Register b n */
 #define RSCANFD_CFDCFFDCSTSBN 0x6408
-/* Common FIFO Access CAN-FD Control/Status Register B N bits */
+/* Common FIFO Access CAN-FD Control/Status Register b n bits */
 #define RSCANFD_CFDCFFDCSTSBN_CFFDF BIT(2)
 #define RSCANFD_CFDCFFDCSTSBN_CFBRS BIT(1)
 #define RSCANFD_CFDCFFDCSTSBN_CFESI BIT(0)
 
-/* Common FIFO Access Data Field 0 Registers B N */
+/* Common FIFO Access Data Field 0 Registers b n */
 #define RSCANFD_CFDCFDF0BN 0x640C
 
 #define CAN_RCAR_RSCANFD_MODULE_CLOCK_RATE 80000000
@@ -271,17 +298,6 @@ static inline int can_rcar_rscanfd_busy_wait(mem_addr_t reg, uint32_t bit_mask, 
 	uint32_t val;
 
 	for (i = 0; i < MAX_RETRIES; i++) {
-		/*val = sys_read32(reg);
-		if (expect_one) {
-			if (reg & bit_mask) {
-				return 0;
-			}
-		}
-		else {
-			if (!(reg & bit_mask)) {
-				return 0;
-			}
-		}*/
 		val = sys_read32(reg) & bit_mask;
 		if (!expect_one) val = !val;
 		if (val) {
@@ -522,6 +538,19 @@ static inline void can_rcar_rscanfd_configure_fifo(const struct device *dev)
 		RSCANFD_CFDCFCCN_CFE_DISABLE << RSCANFD_CFDCFCCN_CFE_SHIFT);
 }
 
+static inline void can_rcar_rscanfd_configure_errors(const struct device *dev)
+{
+	const struct can_rcar_rscanfd_config *config = dev->config;
+	uint32_t base_offset, val;
+
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+
+	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNCTR);
+	val |= RSCANFD_CFDCNCTR_ALIE | RSCANFD_CFDCNCTR_BORIE |RSCANFD_CFDCNCTR_BOEIE |
+		RSCANFD_CFDCNCTR_EPIE | RSCANFD_CFDCNCTR_EWIE | RSCANFD_CFDCNCTR_BEIE;
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNCTR, val);
+}
+
 /**
  * TODO
  *
@@ -551,6 +580,38 @@ static int can_rcar_rscanfd_configure_timing(const struct device *dev,
 	//printk("[%s:%d] CFDCnNCFG %u = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(base_addr + RSCANFD_CFDCNNCFG));
 
 	return 0;
+}
+
+static void can_rcar_rscanfd_get_error_count(const struct device *dev, struct can_bus_err_cnt *err_cnt)
+{
+	const struct can_rcar_rscanfd_config *config = dev->config;
+	uint32_t base_offset, val;
+
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+
+	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNSTS);
+	err_cnt->tx_err_cnt = (val >> RSCANFD_CFDCNSTS_TEC_SHIFT) & RSCANFD_CFDCNSTS_TEC_MASK;
+	err_cnt->rx_err_cnt = (val >> RSCANFD_CFDCNSTS_REC_SHIFT) & RSCANFD_CFDCNSTS_REC_MASK;
+}
+
+static void can_rcar_rscanfd_state_change(const struct device *dev, uint32_t new_state)
+{
+	struct can_rcar_rscanfd_data *data = dev->data;
+	const can_state_change_callback_t callback = data->common.state_change_cb;
+	struct can_bus_err_cnt err_cnt;
+
+	if (data->state == new_state) {
+		return;
+	}
+
+	LOG_DBG("Changing CAN state from %u to %u.\n", data->state, new_state);
+
+	data->state = new_state;
+
+	if (callback != NULL) {
+		can_rcar_rscanfd_get_error_count(dev, &err_cnt);
+		callback(dev, new_state, err_cnt, data->common.state_change_cb_user_data);
+	}
 }
 
 static int can_rcar_rscanfd_get_capabilities(const struct device *dev, can_mode_t *cap)
@@ -591,7 +652,7 @@ static int can_rcar_rscanfd_start(const struct device *dev)
 
 	k_mutex_lock(&data->inst_mutex, K_FOREVER);
 
-	/* Reset all error counters */
+	/* Reset all hardware error counters */
 	if (can_rcar_rscanfd_channel_enter_reset_mode(dev) != 0) {
 		ret = -EIO;
 		goto exit_unlock;
@@ -747,7 +808,6 @@ static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 
 static int can_rcar_rscanfd_set_timing(const struct device *dev, const struct can_timing *timing)
 {
-	const struct can_rcar_rscanfd_config *config = dev->config;
 	struct can_rcar_rscanfd_data *data = dev->data;
 	int ret;
 
@@ -919,11 +979,9 @@ static void can_rcar_rscanfd_remove_rx_filter(const struct device *dev, int filt
 }
 
 static int can_rcar_rscanfd_get_state(const struct device *dev, enum can_state *state,
-				 struct can_bus_err_cnt *err_cnt)
+				      struct can_bus_err_cnt *err_cnt)
 {
 	struct can_rcar_rscanfd_data *data = dev->data;
-
-	printk("[%s:%d] entry\n", __func__, __LINE__);
 
 	k_mutex_lock(&data->inst_mutex, K_FOREVER);
 
@@ -932,13 +990,26 @@ static int can_rcar_rscanfd_get_state(const struct device *dev, enum can_state *
 	}
 
 	if (err_cnt != NULL) {
-		// TODO
-		//can_rcar_get_error_count(config, err_cnt);
+		can_rcar_rscanfd_get_error_count(dev, err_cnt);
 	}
 
 	k_mutex_unlock(&data->inst_mutex);
 
 	return 0;
+}
+
+static void can_rcar_rscanfd_set_state_change_callback(const struct device *dev,
+						       can_state_change_callback_t callback,
+						       void *user_data)
+{
+	struct can_rcar_rscanfd_data *data = dev->data;
+
+	k_mutex_lock(&data->inst_mutex, K_FOREVER);
+
+	data->common.state_change_cb = callback;
+	data->common.state_change_cb_user_data = user_data;
+
+	k_mutex_unlock(&data->inst_mutex);
 }
 
 static int can_rcar_rscanfd_get_core_clock(const struct device *dev, uint32_t *rate)
@@ -957,7 +1028,101 @@ static int can_rcar_rscanfd_get_max_filters(const struct device *dev, bool ide)
 	return CONFIG_CAN_RCAR_MAX_FILTERS;
 }
 
-static void can_rcar_rscanfd_rx_isr(const struct device *dev)
+/* Clearing a CFDCnERFL bus error bit (from bit 14 to bit 8) requires some polling */
+static void can_rcar_rscanfd_clear_error_bit(const struct device *dev, uint32_t bit_mask)
+{
+	const struct can_rcar_rscanfd_config *config = dev->config;
+	uint32_t base_offset, val;
+
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE +
+		RSCANFD_CFDCNERFL;
+
+	/* Set the bit to 0 until it effectively changes to 0 */
+	while (1) {
+		val = can_rcar_rscanfd_read(dev, base_offset);
+		if (val & bit_mask) {
+			val &= ~bit_mask;
+			can_rcar_rscanfd_write(dev, base_offset, val);
+		}
+		else {
+			break;
+		}
+	}
+}
+
+static inline void can_rcar_rscanfd_error_isr(const struct device *dev, uint32_t irq_flags)
+{
+	const struct can_rcar_rscanfd_config *config = dev->config;
+	uint32_t base_offset;
+
+	/* Get more precision about a bus error */
+	if (irq_flags & RSCANFD_CFDCNERFL_BEF) {
+		if (irq_flags & RSCANFD_CFDCNERFL_ADERR) {
+			CAN_STATS_ACK_ERROR_INC(dev);
+			can_rcar_rscanfd_clear_error_bit(dev, RSCANFD_CFDCNERFL_ADERR);
+			irq_flags &= ~RSCANFD_CFDCNERFL_ADERR;
+		}
+		if (irq_flags & RSCANFD_CFDCNERFL_B0ERR) {
+			CAN_STATS_BIT0_ERROR_INC(dev);
+			can_rcar_rscanfd_clear_error_bit(dev, RSCANFD_CFDCNERFL_B0ERR);
+			irq_flags &= ~RSCANFD_CFDCNERFL_B0ERR;
+		}
+		if (irq_flags & RSCANFD_CFDCNERFL_B1ERR) {
+			CAN_STATS_BIT1_ERROR_INC(dev);
+			can_rcar_rscanfd_clear_error_bit(dev, RSCANFD_CFDCNERFL_B1ERR);
+			irq_flags &= ~RSCANFD_CFDCNERFL_B1ERR;
+		}
+		if (irq_flags & RSCANFD_CFDCNERFL_CERR) {
+			CAN_STATS_CRC_ERROR_INC(dev);
+			can_rcar_rscanfd_clear_error_bit(dev, RSCANFD_CFDCNERFL_CERR);
+			irq_flags &= ~RSCANFD_CFDCNERFL_CERR;
+		}
+		if (irq_flags & RSCANFD_CFDCNERFL_AERR) {
+			CAN_STATS_ACK_ERROR_INC(dev);
+			can_rcar_rscanfd_clear_error_bit(dev, RSCANFD_CFDCNERFL_AERR);
+			irq_flags &= ~RSCANFD_CFDCNERFL_AERR;
+		}
+		if (irq_flags & RSCANFD_CFDCNERFL_FERR) {
+			CAN_STATS_FORM_ERROR_INC(dev);
+			can_rcar_rscanfd_clear_error_bit(dev, RSCANFD_CFDCNERFL_FERR);
+			irq_flags &= ~RSCANFD_CFDCNERFL_FERR;
+		}
+		if (irq_flags & RSCANFD_CFDCNERFL_SERR) {
+			CAN_STATS_STUFF_ERROR_INC(dev);
+			can_rcar_rscanfd_clear_error_bit(dev, RSCANFD_CFDCNERFL_SERR);
+			irq_flags &= ~RSCANFD_CFDCNERFL_SERR;
+		}
+	}
+
+	if (irq_flags & RSCANFD_CFDCNERFL_EWF) {
+		LOG_DBG("Error warning interrupt.\n");
+		can_rcar_rscanfd_state_change(dev, CAN_STATE_ERROR_WARNING);
+	}
+
+	if (irq_flags & RSCANFD_CFDCNERFL_EPF) {
+		LOG_DBG("Error passive interrupt.\n");
+		can_rcar_rscanfd_state_change(dev, CAN_STATE_ERROR_PASSIVE);
+	}
+
+	if (irq_flags & RSCANFD_CFDCNERFL_BOEF) {
+		LOG_DBG("Bus-off entry interrupt.\n");
+		can_rcar_rscanfd_state_change(dev, CAN_STATE_BUS_OFF);
+	}
+
+	if (irq_flags & RSCANFD_CFDCNERFL_BORF) {
+		LOG_DBG("Bus-off recover interrupt.\n");
+		can_rcar_rscanfd_state_change(dev, CAN_STATE_BUS_OFF);
+	}
+
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+
+	/* Clear the interrupt flag */
+	irq_flags &= ~(RSCANFD_CFDCNERFL_ALF | RSCANFD_CFDCNERFL_BORF | RSCANFD_CFDCNERFL_BOEF |
+		RSCANFD_CFDCNERFL_EPF | RSCANFD_CFDCNERFL_EWF | RSCANFD_CFDCNERFL_BEF);
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNERFL, irq_flags);
+}
+
+static inline void can_rcar_rscanfd_rx_isr(const struct device *dev)
 {
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	const struct can_rcar_rscanfd_data *data = dev->data;
@@ -1051,18 +1216,30 @@ static void can_rcar_rscanfd_isr(const struct device *dev)
 	struct can_rcar_rscanfd_data *data = dev->data;
 	uint32_t irq_flags, base_offset;
 
-	printk("[%s:%d] entry dev=%s\n", __func__, __LINE__, dev->name);
+	//printk("[%s:%d] entry dev=%s\n", __func__, __LINE__, dev->name);
+
+	/* Error */
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	irq_flags = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNERFL);
+	if (irq_flags & (RSCANFD_CFDCNERFL_ALF | RSCANFD_CFDCNERFL_BORF | RSCANFD_CFDCNERFL_BOEF |
+		RSCANFD_CFDCNERFL_EPF | RSCANFD_CFDCNERFL_EWF | RSCANFD_CFDCNERFL_BEF)) {
+		can_rcar_rscanfd_error_isr(dev, irq_flags);
+
+		printk("[%s:%d] ERR CFDCNERFL=0x%08X, CFDCNSTS=0x%08X\n", __func__, __LINE__, irq_flags, can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNSTS));
+	}
 
 	/* Frame transmission, uses the first Common FIFO of the channel */
 	base_offset = config->channel * sizeof(uint32_t) * CAN_RCAR_RSCANFD_COMMON_FIFO_PER_CHANNEL;
 	irq_flags = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCFSTSN);
 	if (irq_flags & RSCANFD_CFDCFSTSN_CFTXIF) {
-		data->tx_callback(dev, 0 /* TODO */, data->tx_user_data);
+		data->tx_callback(dev, 0, data->tx_user_data);
 		k_sem_give(&data->tx_sem);
 
 		/* Clear the interrupt flag */
 		irq_flags &= ~RSCANFD_CFDCFSTSN_CFTXIF;
 		can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFSTSN, irq_flags);
+
+		//printk("[%s:%d] TX CFDCNERFL=0x%08X, CFDCNSTS=0x%08X\n", __func__, __LINE__, can_rcar_rscanfd_read(dev, config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE + RSCANFD_CFDCNERFL), can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNSTS));
 	}
 
 	/* Frame reception, uses the second Common FIFO of the channel */
@@ -1107,6 +1284,8 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 	can_rcar_rscanfd_configure_acceptance_filter_list(dev);
 
 	can_rcar_rscanfd_configure_fifo(dev);
+
+	can_rcar_rscanfd_configure_errors(dev);
 
 	// TEST
 	/*if (config->channel == 0) {
@@ -1183,29 +1362,29 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 }
 
 static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
-	.get_capabilities = can_rcar_rscanfd_get_capabilities, // OK
-	.start = can_rcar_rscanfd_start, // OK
-	.stop = can_rcar_rscanfd_stop, // OK
-	.set_mode = can_rcar_rscanfd_set_mode, // OK
-	.set_timing = can_rcar_rscanfd_set_timing, // OK
+	.get_capabilities = can_rcar_rscanfd_get_capabilities,
+	.start = can_rcar_rscanfd_start,
+	.stop = can_rcar_rscanfd_stop,
+	.set_mode = can_rcar_rscanfd_set_mode,
+	.set_timing = can_rcar_rscanfd_set_timing,
 	.send = can_rcar_rscanfd_send,
-	.add_rx_filter = can_rcar_rscanfd_add_rx_filter, // OK
-	.remove_rx_filter = can_rcar_rscanfd_remove_rx_filter, // OK
+	.add_rx_filter = can_rcar_rscanfd_add_rx_filter,
+	.remove_rx_filter = can_rcar_rscanfd_remove_rx_filter,
 /*#ifdef CONFIG_CAN_MANUAL_RECOVERY_MODE
 	.recover = can_rcar_recover,
 #endif*/ /* CONFIG_CAN_MANUAL_RECOVERY_MODE */
 	.get_state = can_rcar_rscanfd_get_state,
-	//.set_state_change_callback = can_rcar_rscanfd_set_state_change_callback,
-	.get_core_clock = can_rcar_rscanfd_get_core_clock, // OK
-	.get_max_filters = can_rcar_rscanfd_get_max_filters, // OK
-	.timing_min = { // OK
+	.set_state_change_callback = can_rcar_rscanfd_set_state_change_callback,
+	.get_core_clock = can_rcar_rscanfd_get_core_clock,
+	.get_max_filters = can_rcar_rscanfd_get_max_filters,
+	.timing_min = {
 		.sjw = 1,
 		.prop_seg = 0,
 		.phase_seg1 = 2,
 		.phase_seg2 = 2,
 		.prescaler = 1
 	},
-	.timing_max = { // OK
+	.timing_max = {
 		.sjw = 128,
 		.prop_seg = 0,
 		.phase_seg1 = 256,
