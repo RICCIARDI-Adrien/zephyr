@@ -10,7 +10,6 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-//#include <zephyr/sys/__assert.h>
 
 LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 
@@ -241,6 +240,7 @@ struct can_rcar_rscanfd_global_config {
 struct can_rcar_rscanfd_global_data {
 	struct k_mutex list_mutex;
 	const struct device *channel_dev[CAN_RCAR_RSCANFD_CHANNELS_COUNT];
+	uint32_t enabled_channels_count;
 };
 
 struct can_rcar_rscanfd_config {
@@ -577,8 +577,6 @@ static int can_rcar_rscanfd_configure_timing(const struct device *dev,
 
 	// TODO CFDCnCTR
 
-	//printk("[%s:%d] CFDCnNCFG %u = 0x%08X\n", __func__, __LINE__, config->channel, sys_read32(base_addr + RSCANFD_CFDCNNCFG));
-
 	return 0;
 }
 
@@ -635,8 +633,6 @@ static int can_rcar_rscanfd_start(const struct device *dev)
 	struct can_rcar_rscanfd_data *data = dev->data;
 	int ret;
 
-	printk("[%s:%d] entry canal %u\n", __func__, __LINE__, config->channel);
-
 	if (data->common.started) {
 		return -EALREADY;
 	}
@@ -687,8 +683,6 @@ static int can_rcar_rscanfd_stop(const struct device *dev)
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	struct can_rcar_rscanfd_data *data = dev->data;
 	int ret;
-
-	printk("[%s:%d] entry\n", __func__, __LINE__);
 
 	if (!data->common.started) {
 		return -EALREADY;
@@ -845,8 +839,6 @@ static int can_rcar_rscanfd_send(const struct device *dev, const struct can_fram
 	struct can_rcar_rscanfd_data *data = dev->data;
 	uint32_t base_offset, val, i;
 
-	printk("[%s:%d] entry\n", __func__, __LINE__);
-
 	LOG_DBG("Sending %s, ID: 0x%X, ID type: %s, DLC: %u, remote frame: %s.",
 		dev->name, frame->id,
 		(frame->flags & CAN_FRAME_IDE) != 0 ? "extended" : "standard",
@@ -936,8 +928,6 @@ static int can_rcar_rscanfd_add_rx_filter(const struct device *dev, can_rx_callb
 	struct can_rcar_rscanfd_data *data = dev->data;
 	int i, ret;
 
-	printk("[%s:%d] entry\n", __func__, __LINE__);
-
 	k_mutex_lock(&data->rx_mutex, K_FOREVER);
 
 	/* Search for the first empty entry */
@@ -965,8 +955,6 @@ static int can_rcar_rscanfd_add_rx_filter(const struct device *dev, can_rx_callb
 static void can_rcar_rscanfd_remove_rx_filter(const struct device *dev, int filter_id)
 {
 	struct can_rcar_rscanfd_data *data = dev->data;
-
-	printk("[%s:%d] entry\n", __func__, __LINE__);
 
 	if ((filter_id < 0) || (filter_id >= CONFIG_CAN_RCAR_MAX_FILTERS)) {
 		LOG_ERR("Filter ID %d is out of bounds.", filter_id);
@@ -1174,8 +1162,6 @@ static inline void can_rcar_rscanfd_rx_isr(const struct device *dev)
 		goto exit_unlock;
 	}
 
-	//printk("[%s:%d] ID=%u, DLC=%u, bytes_count=%u\n", __func__, __LINE__, frame.id, frame.dlc, bytes_count);
-
 	/* Retrieve the data */
 	source_addr = config->reg + base_offset + RSCANFD_CFDCFDF0BN;
 	can_data = frame.data;
@@ -1183,7 +1169,6 @@ static inline void can_rcar_rscanfd_rx_isr(const struct device *dev)
 		*can_data = sys_read8(source_addr);
 		source_addr++;
 		can_data++;
-		//printk("[%s:%d] data %d=0x%02X\n", __func__, __LINE__, i, *(can_data - 1));
 	}
 
 	/* Check for all matching filters */
@@ -1216,16 +1201,12 @@ static void can_rcar_rscanfd_isr(const struct device *dev)
 	struct can_rcar_rscanfd_data *data = dev->data;
 	uint32_t irq_flags, base_offset;
 
-	//printk("[%s:%d] entry dev=%s\n", __func__, __LINE__, dev->name);
-
 	/* Error */
 	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
 	irq_flags = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNERFL);
 	if (irq_flags & (RSCANFD_CFDCNERFL_ALF | RSCANFD_CFDCNERFL_BORF | RSCANFD_CFDCNERFL_BOEF |
 		RSCANFD_CFDCNERFL_EPF | RSCANFD_CFDCNERFL_EWF | RSCANFD_CFDCNERFL_BEF)) {
 		can_rcar_rscanfd_error_isr(dev, irq_flags);
-
-		printk("[%s:%d] ERR CFDCNERFL=0x%08X, CFDCNSTS=0x%08X\n", __func__, __LINE__, irq_flags, can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNSTS));
 	}
 
 	/* Frame transmission, uses the first Common FIFO of the channel */
@@ -1238,8 +1219,6 @@ static void can_rcar_rscanfd_isr(const struct device *dev)
 		/* Clear the interrupt flag */
 		irq_flags &= ~RSCANFD_CFDCFSTSN_CFTXIF;
 		can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFSTSN, irq_flags);
-
-		//printk("[%s:%d] TX CFDCNERFL=0x%08X, CFDCNSTS=0x%08X\n", __func__, __LINE__, can_rcar_rscanfd_read(dev, config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE + RSCANFD_CFDCNERFL), can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNSTS));
 	}
 
 	/* Frame reception, uses the second Common FIFO of the channel */
@@ -1260,15 +1239,12 @@ static void can_rcar_rscanfd_isr(const struct device *dev)
 
 static int can_rcar_rscanfd_init(const struct device *dev)
 {
-	static uint32_t enabled_channels_count = 0;
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	const struct can_rcar_rscanfd_global_config *global_config = config->global_dev->config;
 	struct can_rcar_rscanfd_data *data = dev->data;
 	struct can_rcar_rscanfd_global_data *global_data = config->global_dev->data;
-	struct can_timing timing /*= {0}*/;
+	struct can_timing timing;
 	int ret, i;
-
-	printk("[%s:%d] entry DRIVER CUSTOM CHANNEL %d\n", __func__, __LINE__, config->channel);
 
 	ret = pinctrl_apply_state(config->pcfg, PINCTRL_STATE_DEFAULT);
 	if (ret != 0) {
@@ -1287,26 +1263,17 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 
 	can_rcar_rscanfd_configure_errors(dev);
 
-	// TEST
-	/*if (config->channel == 0) {
-		printk("[%s:%d] init channel 0 seulement\n", __func__, __LINE__);*/
-
 	ret = can_calc_timing(dev, &timing, config->common.bitrate, config->common.sample_point);
 	if (ret < 0) {
 		LOG_ERR("Failed to find a timing for channel %u bit rate %u bit/s (%d).",
 			config->channel, config->common.bitrate, ret);
 		return ret;
 	}
-	//LOG_DBG("Prescaler: %d, TS1: %d, TS2: %d, Sample-point error: %d.",
-	//	timing.prescaler, timing.phase_seg1, timing.phase_seg2, ret); // REDONDANT
 
 	ret = can_rcar_rscanfd_configure_timing(dev, &timing);
 	if (ret != 0) {
 		return ret;
 	}
-
-	// TEST
-	//}
 
 	config->configure_irq();
 
@@ -1317,16 +1284,15 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 
 	/* Register the channel device into the controller for later use */
 	k_mutex_lock(&global_data->list_mutex, K_FOREVER);
-	global_data->channel_dev[enabled_channels_count] = dev;
+	global_data->channel_dev[global_data->enabled_channels_count] = dev;
 	k_mutex_unlock(&global_data->list_mutex);
 
 	/* Switch the controller to operation mode when all channels are initialized */
-	enabled_channels_count++;
-	if (enabled_channels_count == global_config->num_enabled_channels) {
+	global_data->enabled_channels_count++;
+	if (global_data->enabled_channels_count == global_config->num_enabled_channels) {
 		ret = can_rcar_rscanfd_enter_operation_mode(global_config);
 		if (ret) {
 			LOG_ERR("Failed to put the controller in operation mode.");
-			// TODO uninit ?
 			return ret;
 		}
 
@@ -1347,7 +1313,8 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 			}
 
 			/* Some working modes can only be set when the channel is in halt mode. */
-			ret = can_rcar_rscanfd_set_mode(dev, CAN_MODE_NORMAL);
+			ret = can_rcar_rscanfd_set_mode(global_data->channel_dev[i],
+				CAN_MODE_NORMAL);
 			if (ret) {
 				LOG_ERR("Failed to set the CAN device channel \"%s\" mode to normal.",
 					global_data->channel_dev[i]->name);
@@ -1482,7 +1449,8 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 		return ret;
 	}
 
-	LOG_DBG("CAN controller IP version: 0x%08X.", sys_read32(config->reg + RSCANFD_CFDGIPV));
+	LOG_DBG("CAN controller IP version: 0x%08X, number of enabled channels: %u.",
+		sys_read32(config->reg + RSCANFD_CFDGIPV), config->num_enabled_channels);
 
 	k_mutex_init(&data->list_mutex);
 
