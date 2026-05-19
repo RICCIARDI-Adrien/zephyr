@@ -476,7 +476,7 @@ static inline void can_rcar_rscanfd_configure_acceptance_filter_list(const struc
 	can_rcar_rscanfd_write(dev, RSCANFD_CFDGAFLECTR, RSCANFD_CFDGAFLECTR_AFLDAE);
 
 	/* There are two consecutive channel rules per CFDGAFLCFGn register */
-	base_offset = RSCANFD_CFDGAFLCFGN + (config->channel / 2);
+	base_offset = RSCANFD_CFDGAFLCFGN + (config->channel / 2) * sizeof(uint32_t);
 	/* Address the correct channel within the register */
 	val = can_rcar_rscanfd_read(dev, base_offset);
 	if (config->channel & 1) { /* Odd channel */
