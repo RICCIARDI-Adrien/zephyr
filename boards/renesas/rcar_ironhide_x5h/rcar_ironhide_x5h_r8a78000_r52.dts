@@ -113,7 +113,7 @@
 };
 
 &can1_global {
-	//status = "okay";
+	status = "okay";
 };
 
 &can0 {
@@ -169,26 +169,26 @@
 	pinctrl-0 = <&can12_rx_default
 		     &can12_tx_default>;
 	pinctrl-names = "default";
-	//status = "okay";
+	status = "okay";
 };
 
 &can13 {
 	pinctrl-0 = <&can13_rx_default
 		     &can13_tx_default>;
 	pinctrl-names = "default";
-	//status = "okay";
+	status = "okay";
 };
 
 &can14 {
 	pinctrl-0 = <&can14_rx_default
 		     &can14_tx_default>;
 	pinctrl-names = "default";
-	//status = "okay";
+	status = "okay";
 };
 
 &can15 {
 	pinctrl-0 = <&can15_rx_default
 		     &can15_tx_default>;
 	pinctrl-names = "default";
-	//status = "okay";
+	status = "okay";
 };
