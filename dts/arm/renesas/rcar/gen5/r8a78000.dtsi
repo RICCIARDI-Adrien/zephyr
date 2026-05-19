@@ -232,29 +232,93 @@
 			clocks = <&scmi_clk R8A78000_CLK_I2C8>;
 		};
 
-		/*can0: can@c1420000 {
-			interrupts = <GIC_SPI 831 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
-			clocks = <&scmi_clk R8A78000_CLK_CANFD0>,
-				 <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>;
-		};*/
 		can0_global: can0-global@c1420000 {
 			clocks = <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>,
 				 <&scmi_clk R8A78000_CLK_CANFD0>;
-			//interrupts = <GIC_SPI 831 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 
-			can0: can0 {
+			can0: can0-0 {
 				channel = <0>;
 				interrupts = <GIC_SPI 832 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 			};
 
-			can1: can1 {
+			can1: can0-1 {
 				channel = <1>;
 				interrupts = <GIC_SPI 833 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 			};
 
-			can5: can5 {
+			can2: can0-2 {
+				channel = <2>;
+				interrupts = <GIC_SPI 834 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can3: can0-3 {
+				channel = <3>;
+				interrupts = <GIC_SPI 835 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can4: can0-4 {
+				channel = <4>;
+				interrupts = <GIC_SPI 836 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can5: can0-5 {
 				channel = <5>;
-				interrupts = <GIC_SPI 831 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>; // TODO
+				interrupts = <GIC_SPI 837 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can6: can0-6 {
+				channel = <6>;
+				interrupts = <GIC_SPI 838 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can7: can0-7 {
+				channel = <7>;
+				interrupts = <GIC_SPI 839 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+		};
+
+		can1_global: can1-global@c1520000 {
+			clocks = <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>,
+				 <&scmi_clk R8A78000_CLK_CANFD1>;
+
+			can1_0: can1-0 {
+				channel = <0>;
+				interrupts = <GIC_SPI 849 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can1_1: can1-1 {
+				channel = <1>;
+				interrupts = <GIC_SPI 850 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can1_2: can1-2 {
+				channel = <2>;
+				interrupts = <GIC_SPI 851 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can1_3: can1-3 {
+				channel = <3>;
+				interrupts = <GIC_SPI 852 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can1_4: can1-4 {
+				channel = <4>;
+				interrupts = <GIC_SPI 853 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can1_5: can1-5 {
+				channel = <5>;
+				interrupts = <GIC_SPI 854 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can1_6: can1-6 {
+				channel = <6>;
+				interrupts = <GIC_SPI 855 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
+			};
+
+			can1_7: can1-7 {
+				channel = <7>;
+				interrupts = <GIC_SPI 856 IRQ_TYPE_LEVEL IRQ_DEFAULT_PRIORITY>;
 			};
 		};
 	};
