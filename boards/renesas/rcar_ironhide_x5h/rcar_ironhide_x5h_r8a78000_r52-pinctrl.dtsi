@@ -23,6 +23,30 @@
 		pin = <PIN_CAN1TX FUNC_CAN1TX>;
 	};
 
+	can2_rx_default: can2_rx_default {
+		pin = <PIN_CAN2RX_INTP2 FUNC_CAN2RX_INTP2>;
+	};
+
+	can2_tx_default: can2_tx_default {
+		pin = <PIN_CAN2TX FUNC_CAN2TX>;
+	};
+
+	can3_rx_default: can3_rx_default {
+		pin = <PIN_CAN3RX_INTP3 FUNC_CAN3RX_INTP3>;
+	};
+
+	can3_tx_default: can3_tx_default {
+		pin = <PIN_CAN3TX FUNC_CAN3TX>;
+	};
+
+	can4_rx_default: can4_rx_default {
+		pin = <PIN_CAN4RX_INTP4 FUNC_CAN4RX_INTP4>;
+	};
+
+	can4_tx_default: can4_tx_default {
+		pin = <PIN_CAN4TX FUNC_CAN4TX>;
+	};
+
 	can5_rx_default: can5_rx_default {
 		pin = <PIN_CAN5RX_INTP5 FUNC_CAN5RX_INTP5>;
 	};
@@ -30,6 +54,88 @@
 	can5_tx_default: can5_tx_default {
 		pin = <PIN_CAN5TX FUNC_CAN5TX>;
 	};
+
+	can6_rx_default: can6_rx_default {
+		pin = <PIN_CAN6RX_INTP6 FUNC_CAN6RX_INTP6>;
+	};
+
+	can6_tx_default: can6_tx_default {
+		pin = <PIN_CAN6TX FUNC_CAN6TX>;
+	};
+
+	// TODO
+	/*can7_rx_default: can7_rx_default {
+		//pin = <PIN_CAN7RX_INTP7 FUNC_CAN7RX_INTP7>;
+		pin = <255 FUNC_CAN7RX_INTP7>;
+	};
+
+	can7_tx_default: can7_tx_default {
+		pin = <PIN_CAN7TX FUNC_CAN7TX>;
+	};
+
+	can1_0_rx_default: can1_0_rx_default {
+		pin = <PIN_CAN8RX_INTP8 FUNC_CAN8RX_INTP8>;
+	};
+
+	can1_0_tx_default: can1_0_tx_default {
+		pin = <PIN_CAN8TX FUNC_CAN8TX>;
+	};
+
+	can1_1_rx_default: can1_1_rx_default {
+		pin = <PIN_CAN9RX_INTP9 FUNC_CAN9RX_INTP9>;
+	};
+
+	can1_1_tx_default: can1_1_tx_default {
+		pin = <PIN_CAN9TX FUNC_CAN9TX>;
+	};
+
+	can1_2_rx_default: can1_2_rx_default {
+		pin = <PIN_CAN10RX_INTP10 FUNC_CAN10RX_INTP10>;
+	};
+
+	can1_2_tx_default: can1_2_tx_default {
+		pin = <PIN_CAN10TX FUNC_CAN10TX>;
+	};
+
+	can1_3_rx_default: can1_3_rx_default {
+		pin = <PIN_CAN11RX_INTP11 FUNC_CAN11RX_INTP11>;
+	};
+
+	can1_3_tx_default: can1_3_tx_default {
+		pin = <PIN_CAN11TX FUNC_CAN11TX>;
+	};
+
+	can1_4_rx_default: can1_4_rx_default {
+		pin = <PIN_CAN12RX_INTP12 FUNC_CAN12RX_INTP12>;
+	};
+
+	can1_4_tx_default: can1_4_tx_default {
+		pin = <PIN_CAN12TX FUNC_CAN12TX>;
+	};
+
+	can1_5_rx_default: can1_5_rx_default {
+		pin = <PIN_CAN13RX_INTP13 FUNC_CAN13RX_INTP13>;
+	};
+
+	can1_5_tx_default: can1_5_tx_default {
+		pin = <PIN_CAN13TX FUNC_CAN13TX>;
+	};
+
+	can1_6_rx_default: can1_6_rx_default {
+		pin = <PIN_CAN14RX_INTP14 FUNC_CAN14RX_INTP14>;
+	};
+
+	can1_6_tx_default: can1_6_tx_default {
+		pin = <PIN_CAN14TX FUNC_CAN14TX>;
+	};
+
+	can1_7_rx_default: can1_7_rx_default {
+		pin = <PIN_CAN15RX_INTP15 FUNC_CAN15RX_INTP15>;
+	};
+
+	can1_7_tx_default: can1_7_tx_default {
+		pin = <PIN_CAN15TX FUNC_CAN15TX>;
+	};*/
 
 	hscif1_data_tx_default: hscif1_data_tx_default {
 		pin = <PIN_HTX1 FUNC_HTX1>;

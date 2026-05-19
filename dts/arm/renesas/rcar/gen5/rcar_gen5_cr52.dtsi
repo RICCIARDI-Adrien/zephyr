@@ -347,29 +347,95 @@
 			status = "disabled";
 		};
 
-		/*can0: can@c1420000 {
-			//compatible = "renesas,rcar-rscanfd";
-			compatible = "renesas,rcar-can";
-			reg = <0xc1420000 0x40000>; // TEST pour 20000
-		};*/
-
 		can0_global: can0-global@c1420000 {
 			compatible = "renesas,rcar-rscanfd-global";
-			reg = <0xc1420000 0x40000>; // TEST pour 20000
+			reg = <0xc1420000 0x20000>;
 			interrupt-parent = <&gic>;
 			status = "disabled";
 
-			can0: can0 {
+			can0: can0-0 {
 				compatible = "renesas,rcar-rscanfd";
 				status = "disabled";
 			};
 
-			can1: can1 {
+			can1: can0-1 {
 				compatible = "renesas,rcar-rscanfd";
 				status = "disabled";
 			};
 
-			can5: can5 {
+			can2: can0-2 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can3: can0-3 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can4: can0-4 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can5: can0-5 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can6: can0-6 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can7: can0-7 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+		};
+
+		can1_global: can1-global@c1520000 {
+			compatible = "renesas,rcar-rscanfd-global";
+			reg = <0xc1520000 0x20000>;
+			interrupt-parent = <&gic>;
+			status = "disabled";
+
+			can1_0: can1-0 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can1_1: can1-1 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can1_2: can1-2 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can1_3: can1-3 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can1_4: can1-4 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can1_5: can1-5 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can1_6: can1-6 {
+				compatible = "renesas,rcar-rscanfd";
+				status = "disabled";
+			};
+
+			can1_7: can1-7 {
 				compatible = "renesas,rcar-rscanfd";
 				status = "disabled";
 			};
