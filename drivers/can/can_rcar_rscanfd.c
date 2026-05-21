@@ -667,9 +667,6 @@ static int can_rcar_rscanfd_start(const struct device *dev)
 
 	data->common.started = true;
 
-	// TEST
-	printk("[%s:%d] CFDCNNCFG0=0x%08X, CFDCNNCFG1=0x%08X, CFDCNCTR0=0x%08X, CFDCNCTR1=0x%08X, CFDCNSTS0=0x%08X, CFDCNSTS1=0x%08X, CFDCFCCN0=0x%08X, CFDCFCCN1=0x%08X, CFDCFCCEN0=0x%08X, CFDCFCCEN1=0x%08X, CFDCFSTS0=0x%08X, CFDCFSTS1=0x%08X, CFDRFCCN0=0x%08X, CFDRFCCN1=0x%08X, CFDGAFLP1N0=0x%08X, CFDGAFLP1N1=0x%08X\n", __func__, __LINE__, sys_read32(config->reg), sys_read32(config->reg + 16), sys_read32(config->reg + 4), sys_read32(config->reg + 4 + 16), sys_read32(config->reg + 8), sys_read32(config->reg + 8 + 16), sys_read32(config->reg + 0x120), sys_read32(config->reg + 0x120 + (3*4)), sys_read32(config->reg + 0x180), sys_read32(config->reg + 0x180 + (3*4)), sys_read32(config->reg + 0x1E0), sys_read32(config->reg + 0x1E0 + (3*4)), sys_read32(config->reg + 0xC0), sys_read32(config->reg + 0xC0 + 4), sys_read32(config->reg + 0x180C), sys_read32(config->reg + 0x180C + 16));
-
 	ret = 0;
 
 exit_unlock:
