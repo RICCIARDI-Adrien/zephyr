@@ -265,6 +265,8 @@ struct can_rcar_rscanfd_data {
 	enum can_state state;
 };
 
+static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode);
+
 /*
  * Read a 32-bit value from the device registers map.
  * @param dev TODO
@@ -657,6 +659,22 @@ static int can_rcar_rscanfd_start(const struct device *dev)
 	CAN_STATS_RESET(dev);
 	data->state = CAN_STATE_ERROR_ACTIVE;
 
+	/* Resetting the error counters also resets the potentially applied test mode */
+	if (data->common.mode & (CAN_MODE_LISTENONLY | CAN_MODE_LOOPBACK)) {
+		/* The test modes can only be set in halt mode */
+		ret = can_rcar_rscanfd_channel_enter_halt_mode(dev);
+		if (ret != 0) {
+			ret = -EIO;
+			goto exit_unlock;
+		}
+
+		ret = can_rcar_rscanfd_set_mode(dev, data->common.mode);
+		if (ret != 0) {
+			ret = -EIO;
+			goto exit_unlock;
+		}
+	}
+
 	if (can_rcar_rscanfd_channel_enter_operation_mode(dev) != 0) {
 		ret = -EIO;
 		goto exit_unlock;
@@ -668,7 +686,7 @@ static int can_rcar_rscanfd_start(const struct device *dev)
 	data->common.started = true;
 
 	// TEST
-	printk("[%s:%d] CFDCNNCFG0=0x%08X, CFDCNNCFG1=0x%08X, CFDCNCTR0=0x%08X, CFDCNCTR1=0x%08X, CFDCNSTS0=0x%08X, CFDCNSTS1=0x%08X, CFDCFCCN0=0x%08X, CFDCFCCN1=0x%08X, CFDCFCCEN0=0x%08X, CFDCFCCEN1=0x%08X, CFDCFSTS0=0x%08X, CFDCFSTS1=0x%08X, CFDRFCCN0=0x%08X, CFDRFCCN1=0x%08X, CFDGAFLP1N0=0x%08X, CFDGAFLP1N1=0x%08X\n", __func__, __LINE__, sys_read32(config->reg), sys_read32(config->reg + 16), sys_read32(config->reg + 4), sys_read32(config->reg + 4 + 16), sys_read32(config->reg + 8), sys_read32(config->reg + 8 + 16), sys_read32(config->reg + 0x120), sys_read32(config->reg + 0x120 + (3*4)), sys_read32(config->reg + 0x180), sys_read32(config->reg + 0x180 + (3*4)), sys_read32(config->reg + 0x1E0), sys_read32(config->reg + 0x1E0 + (3*4)), sys_read32(config->reg + 0xC0), sys_read32(config->reg + 0xC0 + 4), sys_read32(config->reg + 0x180C), sys_read32(config->reg + 0x180C + 16));
+	//printk("[%s:%d] CFDCNNCFG0=0x%08X, CFDCNNCFG1=0x%08X, CFDCNCTR0=0x%08X, CFDCNCTR1=0x%08X, CFDCNSTS0=0x%08X, CFDCNSTS1=0x%08X, CFDCFCCN0=0x%08X, CFDCFCCN1=0x%08X, CFDCFCCEN0=0x%08X, CFDCFCCEN1=0x%08X, CFDCFSTS0=0x%08X, CFDCFSTS1=0x%08X, CFDRFCCN0=0x%08X, CFDRFCCN1=0x%08X, CFDGAFLP1N0=0x%08X, CFDGAFLP1N1=0x%08X\n", __func__, __LINE__, sys_read32(config->reg), sys_read32(config->reg + 16), sys_read32(config->reg + 4), sys_read32(config->reg + 4 + 16), sys_read32(config->reg + 8), sys_read32(config->reg + 8 + 16), sys_read32(config->reg + 0x120), sys_read32(config->reg + 0x120 + (3*4)), sys_read32(config->reg + 0x180), sys_read32(config->reg + 0x180 + (3*4)), sys_read32(config->reg + 0x1E0), sys_read32(config->reg + 0x1E0 + (3*4)), sys_read32(config->reg + 0xC0), sys_read32(config->reg + 0xC0 + 4), sys_read32(config->reg + 0x180C), sys_read32(config->reg + 0x180C + 16));
 
 	ret = 0;
 
@@ -723,7 +741,7 @@ static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 	struct can_rcar_rscanfd_data *data = dev->data;
 	uint32_t base_offset, val_rx, val_tx;
 
-	LOG_DBG("Set mode %u for channel %u (current mode is %u).",
+	LOG_DBG("Set mode 0x%08X for channel %u (current mode is 0x%08X).",
 		mode, config->channel, data->common.mode);
 
 	if (data->common.started) {
