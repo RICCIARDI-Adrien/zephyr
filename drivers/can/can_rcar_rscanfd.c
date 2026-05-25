@@ -181,6 +181,14 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 #define RSCANFD_CFDCNDCFG_DTSEG1_SHIFT 8
 #define RSCANFD_CFDCNDCFG_DBRP_SHIFT 0
 
+/* Channel n CAN-FD Configuration Register */
+#define RSCANFD_CFDCNFDCFG 0x1404
+/* Channel n CAN-FD Configuration Register bits */
+#define RSCANFD_CFDCNFDCFG_CLOE BIT(30)
+#define RSCANFD_CFDCNFDCFG_FDOE BIT(28)
+#define RSCANFD_CFDCNFDCFG_TDCE BIT(9)
+#define RSCANFD_CFDCNFDCFG_TDCOC BIT(8)
+
 /* Global Acceptance Filter List ID Register n */
 #define RSCANFD_CFDGAFLIDN 0x1800
 
@@ -611,7 +619,7 @@ static void can_rcar_rscanfd_state_change(const struct device *dev, uint32_t new
 		return;
 	}
 
-	LOG_DBG("Changing CAN state from %u to %u.\n", data->state, new_state);
+	LOG_DBG("Changing %s state from %u to %u.\n", dev->name, data->state, new_state);
 
 	data->state = new_state;
 
@@ -811,9 +819,25 @@ static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNCTR + sizeof(uint32_t), val_rx);
 
 #ifdef CONFIG_CAN_FD_MODE
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	uint32_t val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNFDCFG);
+
+	/* Configure the CAN FD to work alongside the CAN 2.0 */
 	if (mode & CAN_MODE_FD) {
-		// TODO
+		/* Disable both "classic CAN only" and "FD only" modes */
+		val &= ~(RSCANFD_CFDCNFDCFG_CLOE | RSCANFD_CFDCNFDCFG_FDOE);
 	}
+	/* Disable CAN FD */
+	else {
+		/*
+		 * Disable the transceiver delay compensation, it is useful only for speeds
+		 * starting from 5Mbit/s
+		 */
+		val &= ~RSCANFD_CFDCNFDCFG_TDCE;
+		val |= RSCANFD_CFDCNFDCFG_CLOE;
+	}
+
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNFDCFG, val);
 #endif
 
 	// TODO manual mode
@@ -864,20 +888,23 @@ static int can_rcar_rscanfd_send(const struct device *dev, const struct can_fram
 	struct can_rcar_rscanfd_data *data = dev->data;
 	uint32_t base_offset, val, i;
 
-	LOG_DBG("Sending %s, ID: 0x%X, ID type: %s, DLC: %u, remote frame: %s.",
+	LOG_DBG("Sending %s, ID: 0x%X, ID type: %s, DLC: %u, flags: 0x%02X.",
 		dev->name, frame->id,
 		(frame->flags & CAN_FRAME_IDE) != 0 ? "extended" : "standard",
-		frame->dlc,
-		(frame->flags & CAN_FRAME_RTR) != 0 ? "yes" : "no");
+		frame->dlc, frame->flags);
 
 	if (frame->dlc > CAN_MAX_DLC) {
 		LOG_ERR("DLC of %d exceeds maximum (%d).", frame->dlc, CAN_MAX_DLC);
 		return -EINVAL;
 	}
 
-	if ((frame->flags & ~(CAN_FRAME_IDE | CAN_FRAME_RTR)) != 0) {
+	if ((frame->flags & ~(CAN_FRAME_IDE | CAN_FRAME_RTR
+#ifdef CONFIG_CAN_FD_MODE
+		| CAN_FRAME_FDF | CAN_FRAME_BRS
+#endif
+		)) != 0) {
 		// TODO
-		LOG_ERR("Unsupported CAN frame flags 0x%02X.", frame->flags);
+		LOG_ERR("Unsupported CAN frame flags 0x%02X for %s.", frame->flags, dev->name);
 		return -ENOTSUP;
 	}
 
@@ -1047,7 +1074,7 @@ static int can_rcar_rscanfd_set_timing_data(const struct device *dev,
 {
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	struct can_rcar_rscanfd_data *data = dev->data;
-	uint32_t base_offset;
+	uint32_t base_offset, val, bit_rate;
 	int ret;
 
 	LOG_DBG("Set data timing for %s, sjw=%u, prop_seg=%u, seg1=%u, seg2=%u, presc=%u.",
@@ -1074,6 +1101,17 @@ static int can_rcar_rscanfd_set_timing_data(const struct device *dev,
 		(timing->phase_seg2 - 1) << RSCANFD_CFDCNDCFG_DTSEG2_SHIFT |
 		timing->sjw << RSCANFD_CFDCNDCFG_DSJW_SHIFT |
 		(timing->prescaler - 1) << RSCANFD_CFDCNDCFG_DBRP_SHIFT);
+
+	/* Enable the transceiver delay compensation for high speeds */
+	bit_rate = (CAN_RCAR_RSCANFD_MODULE_CLOCK_RATE / timing->prescaler) /
+		(1 + timing->prop_seg + timing->phase_seg1 + timing->phase_seg2);
+	if (bit_rate >= 5000000) {
+		val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNFDCFG);
+		/* Use the measured compensation + an offset of 0 */
+		val &= ~RSCANFD_CFDCNFDCFG_TDCOC;
+		val |= RSCANFD_CFDCNFDCFG_TDCE;
+		can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNFDCFG, val);
+	}
 
 	ret = 0;
 
@@ -1197,7 +1235,7 @@ static inline void can_rcar_rscanfd_rx_isr(const struct device *dev)
 	}
 	if (val & RSCANFD_CFDCFIDBN_CFRTR) {
 #ifndef CONFIG_CAN_ACCEPT_RTR
-		goto exit_unlock;
+		goto exit_next_frame;
 #endif
 		frame.flags |= CAN_FRAME_RTR;
 	}
@@ -1214,12 +1252,15 @@ static inline void can_rcar_rscanfd_rx_isr(const struct device *dev)
 		frame.flags |= CAN_FRAME_ESI;
 	}
 	if (val & RSCANFD_CFDCFFDCSTSBN_CFBRS) {
-		// TODO BRS only in FD mode ?
+#ifndef CONFIG_CAN_FD_MODE
+		/* The bit rate switch is possible only in FD mode */
+		goto exit_next_frame;
+#endif
 		frame.flags |= CAN_FRAME_BRS;
 	}
 	if (val & RSCANFD_CFDCFFDCSTSBN_CFFDF) {
 #ifndef CONFIG_CAN_FD_MODE
-		goto exit_unlock;
+		goto exit_next_frame;
 #endif
 		frame.flags |= CAN_FRAME_FDF;
 	}
@@ -1227,7 +1268,7 @@ static inline void can_rcar_rscanfd_rx_isr(const struct device *dev)
 	/* A CAN 2.0 frame data size is limited to 8 bytes */
 	bytes_count = can_dlc_to_bytes(frame.dlc);
 	if (!(frame.flags & CAN_FRAME_FDF) && (bytes_count > CAN_MAX_DLC)) {
-		goto exit_unlock;
+		goto exit_next_frame;
 	}
 
 	/* Retrieve the data */
@@ -1257,7 +1298,7 @@ static inline void can_rcar_rscanfd_rx_isr(const struct device *dev)
 		data->rx_callback[i](dev, &user_frame, data->rx_callback_user_data[i]);
 	}
 
-exit_unlock:
+exit_next_frame:
 	/* Increment the FIFO read pointer to get access to the next received frame */
 	base_offset = config->channel * CAN_RCAR_RSCANFD_COMMON_FIFO_PER_CHANNEL * sizeof(uint32_t);
 	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCFPCTR1, 0xFF);
