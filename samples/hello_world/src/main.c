@@ -83,6 +83,22 @@ int main(void)
 		return 0;
 	}
 
+#ifdef CONFIG_CAN_FD_MODE
+	ret = can_calc_timing_data(can_dev, &timing, 8000000, 0);
+	if (ret < 0)
+	{
+		printk("err can_calc_timing_data() %d.\n", ret);
+		return 0;
+	}
+
+	ret = can_set_timing_data(can_dev, &timing);
+	if (ret != 0)
+	{
+		printk("err can_set_timing() %d.\n", ret);
+		return 0;
+	}
+#endif
+
 	ret = can_start(can_dev);
 	if (ret != 0)
 	{

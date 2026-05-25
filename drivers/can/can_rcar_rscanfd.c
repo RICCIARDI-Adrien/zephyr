@@ -173,6 +173,14 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 /* Common FIFO Pointer Control Register 1 */
 #define RSCANFD_CFDCFPCTR1 0x0244
 
+/* Channel n Data Bitrate Configuration Register */
+#define RSCANFD_CFDCNDCFG 0x1400
+/* Channel n Data Bitrate Configuration Register bits */
+#define RSCANFD_CFDCNDCFG_DSJW_SHIFT 24
+#define RSCANFD_CFDCNDCFG_DTSEG2_SHIFT 16
+#define RSCANFD_CFDCNDCFG_DTSEG1_SHIFT 8
+#define RSCANFD_CFDCNDCFG_DBRP_SHIFT 0
+
 /* Global Acceptance Filter List ID Register n */
 #define RSCANFD_CFDGAFLIDN 0x1800
 
@@ -225,8 +233,11 @@ LOG_MODULE_REGISTER(can_rcar_rscanfd, CONFIG_CAN_LOG_LEVEL);
 /* There are 32 consecutive 4-byte registers per entry (only the first 19 are used). */
 #define CAN_RCAR_RSCANFD_CFMBCP_ENTRY_SIZE 128
 
-/* TODO */
-#define CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE 16
+/* There are four consecutive 4-byte registers for each CAN 2.0 channel configuration */
+#define CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE 16
+
+/* There are eight consecutive 4-byte registers for each CAN FD channel configuration */
+#define CAN_RCAR_RSCANFD_CANFD_CHANNEL_REGISTERS_GROUP_SIZE 32
 
 struct can_rcar_rscanfd_global_config {
 	uint32_t reg;
@@ -345,7 +356,7 @@ static int can_rcar_rscanfd_enter_operation_mode(const struct can_rcar_rscanfd_g
 static int can_rcar_rscanfd_channel_leave_sleep_mode(const struct device *dev)
 {
 	const struct can_rcar_rscanfd_config *config = dev->config;
-	uint32_t base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	uint32_t base_offset = config->channel * CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE;
 	int ret;
 
 	/* Release the channel from sleep mode, resetting all other fields at the same time. */
@@ -355,7 +366,7 @@ static int can_rcar_rscanfd_channel_leave_sleep_mode(const struct device *dev)
 	ret = can_rcar_rscanfd_busy_wait(config->reg + base_offset + RSCANFD_CFDCNSTS,
 		RSCANFD_CFDCNSTS_CSLPSTS, 0);
 	if (ret != 0) {
-		LOG_ERR("Leaving the sleep mode for channel %u took too long.", config->channel);
+		LOG_ERR("Leaving the sleep mode for %s took too long.", dev->name);
 		return ret;
 	}
 
@@ -368,7 +379,7 @@ static int can_rcar_rscanfd_channel_enter_reset_mode(const struct device *dev)
 	uint32_t base_offset, val;
 	int ret;
 
-	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE;
 
 	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNCTR);
 	val &= ~(RSCANFD_CFDCNCTR_CHMDC_MASK << RSCANFD_CFDCNCTR_CHMDC_SHIFT);
@@ -378,7 +389,7 @@ static int can_rcar_rscanfd_channel_enter_reset_mode(const struct device *dev)
 	ret = can_rcar_rscanfd_busy_wait(config->reg + base_offset + RSCANFD_CFDCNSTS,
 		RSCANFD_CFDCNSTS_CRSTSTS, 1);
 	if (ret != 0) {
-		LOG_ERR("Entering the reset mode for channel %u took too long.", config->channel);
+		LOG_ERR("Entering the reset mode for %s took too long.", dev->name);
 		return ret;
 	}
 
@@ -394,7 +405,7 @@ static int can_rcar_rscanfd_channel_enter_halt_mode(const struct device *dev)
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	uint32_t base_offset, val;
 
-	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE;
 
 	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNCTR);
 	val &= ~(RSCANFD_CFDCNCTR_CHMDC_MASK << RSCANFD_CFDCNCTR_CHMDC_SHIFT);
@@ -410,7 +421,7 @@ static int can_rcar_rscanfd_channel_enter_operation_mode(const struct device *de
 	uint32_t base_offset, val;
 	int ret;
 
-	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE;
 
 	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNCTR);
 	val &= ~(RSCANFD_CFDCNCTR_CHMDC_MASK << RSCANFD_CFDCNCTR_CHMDC_SHIFT);
@@ -419,14 +430,12 @@ static int can_rcar_rscanfd_channel_enter_operation_mode(const struct device *de
 
 	ret = can_rcar_rscanfd_busy_wait(config->reg + base_offset + RSCANFD_CFDCNSTS, RSCANFD_CFDCNSTS_CRSTSTS, 0);
 	if (ret != 0) {
-		LOG_ERR("Going from reset to operation mode for channel %u took too long.",
-			config->channel);
+		LOG_ERR("Going from reset to operation mode for %s took too long.", dev->name);
 		return ret;
 	}
 	ret = can_rcar_rscanfd_busy_wait(config->reg + base_offset + RSCANFD_CFDCNSTS, RSCANFD_CFDCNSTS_CHLTSTS, 0);
 	if (ret != 0) {
-		LOG_ERR("Going from halt to operation mode for channel %u took too long.",
-			config->channel);
+		LOG_ERR("Going from halt to operation mode for %s took too long.", dev->name);
 		return ret;
 	}
 
@@ -545,7 +554,7 @@ static inline void can_rcar_rscanfd_configure_errors(const struct device *dev)
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	uint32_t base_offset, val;
 
-	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE;
 
 	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNCTR);
 	val |= RSCANFD_CFDCNCTR_ALIE | RSCANFD_CFDCNCTR_BORIE |RSCANFD_CFDCNCTR_BOEIE |
@@ -555,7 +564,7 @@ static inline void can_rcar_rscanfd_configure_errors(const struct device *dev)
 
 /**
  * TODO
- *
+ * Configure the CAN 2.0B timings (not the CAN FD ones)
  * @note The channel must already be in Reset or Halt state.
  */
 static int can_rcar_rscanfd_configure_timing(const struct device *dev,
@@ -564,20 +573,18 @@ static int can_rcar_rscanfd_configure_timing(const struct device *dev,
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	uint32_t base_offset;
 
-	LOG_DBG("Set timing for channel %u, sjw=%u, prop_seg=%u, seg1=%u, seg2=%u, presc=%u.",
-		config->channel, timing->sjw, timing->prop_seg, timing->phase_seg1,
+	LOG_DBG("Set timing for %s, sjw=%u, prop_seg=%u, seg1=%u, seg2=%u, presc=%u.",
+		dev->name, timing->sjw, timing->prop_seg, timing->phase_seg1,
 		timing->phase_seg2, timing->prescaler);
 
 	/* Each channel is handled by a group of four 4-byte registers */
-	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE;
 
 	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNNCFG,
 		(timing->phase_seg1 + timing->prop_seg - 1) << RSCANFD_CFDCNNCFG_NTSEG1_SHIFT |
 		(timing->phase_seg2 - 1) << RSCANFD_CFDCNNCFG_NTSEG2_SHIFT |
 		timing->sjw << RSCANFD_CFDCNNCFG_NSJW_SHIFT |
 		(timing->prescaler - 1) << RSCANFD_CFDCNNCFG_NBRP_SHIFT);
-
-	// TODO CFDCnCTR
 
 	return 0;
 }
@@ -587,7 +594,7 @@ static void can_rcar_rscanfd_get_error_count(const struct device *dev, struct ca
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	uint32_t base_offset, val;
 
-	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE;
 
 	val = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNSTS);
 	err_cnt->tx_err_cnt = (val >> RSCANFD_CFDCNSTS_TEC_SHIFT) & RSCANFD_CFDCNSTS_TEC_MASK;
@@ -642,8 +649,8 @@ static int can_rcar_rscanfd_start(const struct device *dev)
 	if (config->common.phy != NULL) {
 		ret = can_transceiver_enable(config->common.phy, data->common.mode);
 		if (ret != 0) {
-			LOG_ERR("Failed to enable the CAN transceiver for canal %u (%d).",
-				config->channel, ret);
+			LOG_ERR("Failed to enable the CAN transceiver for %s (%d).",
+				dev->name, ret);
 			return ret;
 		}
 	}
@@ -741,8 +748,8 @@ static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 	struct can_rcar_rscanfd_data *data = dev->data;
 	uint32_t base_offset, val_rx, val_tx;
 
-	LOG_DBG("Set mode 0x%08X for channel %u (current mode is 0x%08X).",
-		mode, config->channel, data->common.mode);
+	LOG_DBG("Set mode 0x%08X for %s (current mode is 0x%08X).",
+		mode, dev->name, data->common.mode);
 
 	if (data->common.started) {
 		return -EBUSY;
@@ -770,7 +777,7 @@ static int can_rcar_rscanfd_set_mode(const struct device *dev, can_mode_t mode)
 #endif
 
 	/* Each channel is handled by a group of four 4-byte registers */
-	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE;
 
 	k_mutex_lock(&data->inst_mutex, K_FOREVER);
 
@@ -1034,13 +1041,56 @@ static int can_rcar_rscanfd_get_max_filters(const struct device *dev, bool ide)
 	return CONFIG_CAN_RCAR_MAX_FILTERS;
 }
 
+#ifdef CONFIG_CAN_FD_MODE
+static int can_rcar_rscanfd_set_timing_data(const struct device *dev,
+					    const struct can_timing *timing)
+{
+	const struct can_rcar_rscanfd_config *config = dev->config;
+	struct can_rcar_rscanfd_data *data = dev->data;
+	uint32_t base_offset;
+	int ret;
+
+	LOG_DBG("Set data timing for %s, sjw=%u, prop_seg=%u, seg1=%u, seg2=%u, presc=%u.",
+		dev->name, timing->sjw, timing->prop_seg, timing->phase_seg1,
+		timing->phase_seg2, timing->prescaler);
+
+	if (data->common.started) {
+		return -EBUSY;
+	}
+
+	k_mutex_lock(&data->inst_mutex, K_FOREVER);
+
+	/* The timing registers can only be changed in channel reset or halt modes */
+	ret = can_rcar_rscanfd_channel_enter_halt_mode(dev);
+	if (ret != 0) {
+		ret = -EIO;
+		goto exit_unlock;
+	}
+
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+
+	can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNDCFG,
+		(timing->phase_seg1 + timing->prop_seg - 1) << RSCANFD_CFDCNDCFG_DTSEG1_SHIFT |
+		(timing->phase_seg2 - 1) << RSCANFD_CFDCNDCFG_DTSEG2_SHIFT |
+		timing->sjw << RSCANFD_CFDCNDCFG_DSJW_SHIFT |
+		(timing->prescaler - 1) << RSCANFD_CFDCNDCFG_DBRP_SHIFT);
+
+	ret = 0;
+
+exit_unlock:
+	k_mutex_unlock(&data->inst_mutex);
+
+	return ret;
+}
+#endif /* CONFIG_CAN_FD_MODE */
+
 /* Clearing a CFDCnERFL bus error bit (from bit 14 to bit 8) requires some polling */
 static void can_rcar_rscanfd_clear_error_bit(const struct device *dev, uint32_t bit_mask)
 {
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	uint32_t base_offset, val;
 
-	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE +
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE +
 		RSCANFD_CFDCNERFL;
 
 	/* Set the bit to 0 until it effectively changes to 0 */
@@ -1101,26 +1151,26 @@ static inline void can_rcar_rscanfd_error_isr(const struct device *dev, uint32_t
 	}
 
 	if (irq_flags & RSCANFD_CFDCNERFL_EWF) {
-		LOG_DBG("Error warning interrupt.\n");
+		LOG_DBG("Error warning interrupt for %s.", dev->name);
 		can_rcar_rscanfd_state_change(dev, CAN_STATE_ERROR_WARNING);
 	}
 
 	if (irq_flags & RSCANFD_CFDCNERFL_EPF) {
-		LOG_DBG("Error passive interrupt.\n");
+		LOG_DBG("Error passive interrupt for %s.", dev->name);
 		can_rcar_rscanfd_state_change(dev, CAN_STATE_ERROR_PASSIVE);
 	}
 
 	if (irq_flags & RSCANFD_CFDCNERFL_BOEF) {
-		LOG_DBG("Bus-off entry interrupt.\n");
+		LOG_DBG("Bus-off entry interrupt for %s.", dev->name);
 		can_rcar_rscanfd_state_change(dev, CAN_STATE_BUS_OFF);
 	}
 
 	if (irq_flags & RSCANFD_CFDCNERFL_BORF) {
-		LOG_DBG("Bus-off recover interrupt.\n");
+		LOG_DBG("Bus-off recover interrupt for %s.", dev->name);
 		can_rcar_rscanfd_state_change(dev, CAN_STATE_BUS_OFF);
 	}
 
-	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE;
 
 	/* Clear the interrupt flag */
 	irq_flags &= ~(RSCANFD_CFDCNERFL_ALF | RSCANFD_CFDCNERFL_BORF | RSCANFD_CFDCNERFL_BOEF |
@@ -1220,7 +1270,7 @@ static void can_rcar_rscanfd_isr(const struct device *dev)
 	uint32_t irq_flags, base_offset;
 
 	/* Error */
-	base_offset = config->channel * CAN_RCAR_RSCANFD_CHANNEL_REGISTERS_GROUP_SIZE;
+	base_offset = config->channel * CAN_RCAR_RSCANFD_CAN_CHANNEL_REGISTERS_GROUP_SIZE;
 	irq_flags = can_rcar_rscanfd_read(dev, base_offset + RSCANFD_CFDCNERFL);
 	if (irq_flags & (RSCANFD_CFDCNERFL_ALF | RSCANFD_CFDCNERFL_BORF | RSCANFD_CFDCNERFL_BOEF |
 		RSCANFD_CFDCNERFL_EPF | RSCANFD_CFDCNERFL_EWF | RSCANFD_CFDCNERFL_BEF)) {
@@ -1283,8 +1333,8 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 
 	ret = can_calc_timing(dev, &timing, config->common.bitrate, config->common.sample_point);
 	if (ret < 0) {
-		LOG_ERR("Failed to find a timing for channel %u bit rate %u bit/s (%d).",
-			config->channel, config->common.bitrate, ret);
+		LOG_ERR("Failed to find a timing for %s bit rate %u bit/s (%d).",
+			dev->name, config->common.bitrate, ret);
 		return ret;
 	}
 
@@ -1375,8 +1425,31 @@ static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 		.phase_seg1 = 256,
 		.phase_seg2 = 128,
 		.prescaler = 1024
+	},
+#ifdef CONFIG_CAN_FD_MODE
+	.set_timing_data = can_rcar_rscanfd_set_timing_data,
+	.timing_data_min = {
+		.sjw = 1,
+		.prop_seg = 0,
+		.phase_seg1 = 2,
+		.phase_seg2 = 2,
+		.prescaler = 1
+	},
+	.timing_data_max = {
+		.sjw = 16,
+		.prop_seg = 0,
+		.phase_seg1 = 32,
+		.phase_seg2 = 16,
+		.prescaler = 256
 	}
+#endif
 };
+
+#ifdef CONFIG_CAN_FD_MODE
+#define RSCANFD_MAX_BITRATE 8000000
+#else
+#define RSCANFD_MAX_BITRATE 1000000
+#endif
 
 /*
  * A channel of the CAN controller.
@@ -1392,7 +1465,7 @@ static DEVICE_API(can, can_rcar_rscanfd_driver_api) = {
 	}										\
 											\
 	static const struct can_rcar_rscanfd_config can_rcar_rscanfd_config_##n = {	\
-		.common = CAN_DT_DRIVER_CONFIG_INST_GET(n, 0, 1000000),			\
+		.common = CAN_DT_DRIVER_CONFIG_INST_GET(n, 0, RSCANFD_MAX_BITRATE),	\
 		.global_dev = DEVICE_DT_GET(DT_INST_PARENT(n)),				\
 		.reg = DT_REG_ADDR(DT_INST_PARENT(n)),					\
 		.channel = DT_INST_PROP(n, channel),					\
