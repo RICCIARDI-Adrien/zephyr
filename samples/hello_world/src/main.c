@@ -24,7 +24,11 @@ static void can_rx_callback(const struct device *dev, struct can_frame *frame, v
 	bytes = can_dlc_to_bytes(frame->dlc);
 	ptr_data = frame->data;
 
-	printk("Trame reçue %s ! ID=%X, DLC=%u, bytes=%d.\n", dev->name, frame->id, frame->dlc, bytes);
+	printk("Trame reçue %s ! ID=%X, DLC=%u, %s%s%sbytes=%d.\n", dev->name, frame->id, frame->dlc,
+		frame->flags & CAN_FRAME_IDE ? "IDE, " : "",
+		frame->flags & CAN_FRAME_FDF ? "FDF, " : "",
+		frame->flags & CAN_FRAME_BRS ? "BRS, " : "",
+		bytes);
 	for (i = 0; i < bytes; i++)
 	{
 		printk("Data %i : %02X\n", i, *ptr_data);
@@ -97,6 +101,13 @@ int main(void)
 		printk("err can_set_timing() %d.\n", ret);
 		return 0;
 	}
+
+	ret = can_set_mode(can_dev, CAN_MODE_FD);
+	if (ret != 0)
+	{
+		printk("err can_set_mode FD () %d.\n", ret);
+		return 0;
+	}
 #endif
 
 	ret = can_start(can_dev);
@@ -106,10 +117,22 @@ int main(void)
 		return 0;
 	}
 
-	// Receive all frames
+	// Receive all normal ID frames
 	filter.id = 0;
 	filter.mask = 0;
 	filter.flags = 0;
+	ret = can_add_rx_filter(can_dev, can_rx_callback, NULL, &filter);
+	if (ret < 0)
+	{
+		printk("err can_add_rx_filter() %d.\n", ret);
+		return 0;
+	}
+	printk("CAN 0 RX filter ID : %d.\n", ret);
+
+	// Receive all IDE frames
+	filter.id = 0;
+	filter.mask = 0;
+	filter.flags = CAN_FRAME_IDE;
 	ret = can_add_rx_filter(can_dev, can_rx_callback, NULL, &filter);
 	if (ret < 0)
 	{
@@ -147,6 +170,9 @@ int main(void)
 		frame.id = 0x3F0;
 		frame.dlc = can_bytes_to_dlc(4);
 		frame.flags = 0;
+#if CONFIG_CAN_FD_MODE
+		frame.flags |= CAN_FRAME_FDF | CAN_FRAME_BRS;
+#endif
 		frame.data[0] = cnt >> 24;
 		frame.data[1] = cnt >> 16;
 		frame.data[2] = cnt >> 8;
