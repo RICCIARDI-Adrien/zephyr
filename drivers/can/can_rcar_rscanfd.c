@@ -7,6 +7,7 @@
 #include <zephyr/drivers/can.h>
 #include <zephyr/drivers/can/transceiver.h>
 #include <zephyr/drivers/clock_control.h>
+#include <zephyr/drivers/clock_control/renesas_rcar_generic.h>
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -251,8 +252,8 @@ struct can_rcar_rscanfd_global_config {
 	uint32_t reg;
 	const struct device *clock_dev;
 	// TODO utiliser API clock générique
-	clock_control_subsys_t global_clk;
-	clock_control_subsys_t module_clk;
+	rcar_generic_clk_t global_clk;
+	rcar_generic_clk_t module_clk;
 	uint32_t num_enabled_channels;
 };
 
@@ -1054,7 +1055,8 @@ static int can_rcar_rscanfd_get_core_clock(const struct device *dev, uint32_t *r
 	const struct can_rcar_rscanfd_config *config = dev->config;
 	const struct can_rcar_rscanfd_global_config *global_config = config->global_dev->config;
 
-	return clock_control_get_rate(global_config->clock_dev, global_config->global_clk, rate);
+	return clock_control_get_rate(global_config->clock_dev,
+		RCAR_CLOCK_SUBSYS(global_config->global_clk), rate);
 }
 
 static int can_rcar_rscanfd_get_max_filters(const struct device *dev, bool ide)
@@ -1544,14 +1546,14 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 		return -ENODEV;
 	}
 
-	ret = clock_control_on(config->clock_dev, config->global_clk);
+	ret = clock_control_on(config->clock_dev, RCAR_CLOCK_SUBSYS(config->global_clk));
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the global clock on.");
 		return ret;
 	}
 
 	/* Make sure that the clock is fast enough for 8Mbit/s CAN-FD */
-	ret = clock_control_set_rate(config->clock_dev, config->global_clk,
+	ret = clock_control_set_rate(config->clock_dev, RCAR_CLOCK_SUBSYS(config->global_clk),
 		(clock_control_subsys_rate_t)CAN_RCAR_RSCANFD_MODULE_CLOCK_RATE);
 	if (ret != 0) {
 		LOG_ERR("Failed to set the global clock rate to %u Hz.",
@@ -1559,7 +1561,7 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 		return ret;
 	}
 
-	ret = clock_control_on(config->clock_dev, config->module_clk);
+	ret = clock_control_on(config->clock_dev, RCAR_CLOCK_SUBSYS(config->module_clk));
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the module clock on.");
 		return ret;
@@ -1592,8 +1594,8 @@ static int can_rcar_rscanfd_global_init(const struct device *dev)
 	static const struct can_rcar_rscanfd_global_config can_rcar_rscanfd_global_config_##n = { \
 		.reg = DT_INST_REG_ADDR(n),							  \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),				  \
-		.global_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 0, name),	  \
-		.module_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(n, 1, name),	  \
+		.global_clk = RCAR_DT_INST_CLOCKS_CELL_BY_IDX(n, 0),				  \
+		.module_clk = RCAR_DT_INST_CLOCKS_CELL_BY_IDX(n, 1),	  			  \
 		.num_enabled_channels = DT_INST_CHILD_NUM_STATUS_OKAY(n)			  \
 	};											  \
 												  \
