@@ -915,6 +915,11 @@ static int can_rcar_rscanfd_send(const struct device *dev, const struct can_fram
 		return -ENOTSUP;
 	}
 
+	/* A CAN FD frame can be sent only when the FD mode is enabled */
+	if ((frame->flags & CAN_FRAME_FDF) && !(data->common.mode & CAN_MODE_FD)) {
+		return -ENOTSUP;
+	}
+
 	// TODO timestamp
 
 	if (k_sem_take(&data->tx_sem, timeout) != 0) {
