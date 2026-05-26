@@ -891,10 +891,27 @@ static int can_rcar_rscanfd_send(const struct device *dev, const struct can_fram
 		(frame->flags & CAN_FRAME_IDE) != 0 ? "extended" : "standard",
 		frame->dlc, frame->flags);
 
-	if (frame->dlc > CAN_MAX_DLC) {
-		LOG_ERR("DLC of %d exceeds maximum (%d).", frame->dlc, CAN_MAX_DLC);
+#ifdef CONFIG_CAN_FD_MODE
+	/* CAN FD frame */
+	if (frame->flags & CAN_FRAME_FDF) {
+		if (frame->dlc > CANFD_MAX_DLC) {
+			LOG_ERR("CAN FD DLC of %d exceeds maximum of %u on %s.", frame->dlc,
+				CANFD_MAX_DLC, dev->name);
+			return -EINVAL;
+		}
+	/* Classic CAN frame */
+	} else if (frame->dlc > CAN_MAX_DLC) {
+		LOG_ERR("Classic CAN DLC of %d exceeds maximum of %u on %s.", frame->dlc,
+			CAN_MAX_DLC, dev->name);
 		return -EINVAL;
 	}
+#else
+	if (frame->dlc > CAN_MAX_DLC) {
+		LOG_ERR("DLC of %d exceeds maximum of %u on %s.", frame->dlc,
+			CAN_MAX_DLC, dev->name);
+		return -EINVAL;
+	}
+#endif
 
 	if ((frame->flags & ~(CAN_FRAME_IDE | CAN_FRAME_RTR
 #ifdef CONFIG_CAN_FD_MODE
