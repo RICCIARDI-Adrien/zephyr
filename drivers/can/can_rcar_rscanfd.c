@@ -569,7 +569,7 @@ static inline void can_rcar_rscanfd_configure_errors(const struct device *dev)
  * Configure the CAN 2.0B timings (not the CAN FD ones).
  * Note : the channel must already be in Reset or Halt state.
  */
-static int can_rcar_rscanfd_configure_timing(const struct device *dev,
+static void can_rcar_rscanfd_configure_timing(const struct device *dev,
 					     const struct can_timing *timing)
 {
 	const struct can_rcar_rscanfd_config *config = dev->config;
@@ -587,8 +587,6 @@ static int can_rcar_rscanfd_configure_timing(const struct device *dev,
 		(timing->phase_seg2 - 1) << RSCANFD_CFDCNNCFG_NTSEG2_SHIFT |
 		timing->sjw << RSCANFD_CFDCNNCFG_NSJW_SHIFT |
 		(timing->prescaler - 1) << RSCANFD_CFDCNNCFG_NBRP_SHIFT);
-
-	return 0;
 }
 
 static void can_rcar_rscanfd_get_error_count(const struct device *dev,
@@ -865,10 +863,7 @@ static int can_rcar_rscanfd_set_timing(const struct device *dev, const struct ca
 		goto exit_unlock;
 	}
 
-	ret = can_rcar_rscanfd_configure_timing(dev, timing);
-	if (ret != 0) {
-		goto exit_unlock;
-	}
+	can_rcar_rscanfd_configure_timing(dev, timing);
 
 	ret = 0;
 
@@ -932,10 +927,12 @@ static int can_rcar_rscanfd_send(const struct device *dev, const struct can_fram
 		return -ENOTSUP;
 	}
 
+#ifdef CONFIG_CAN_FD_MODE
 	/* A CAN FD frame can be sent only when the FD mode is enabled */
 	if ((frame->flags & CAN_FRAME_FDF) && !(data->common.mode & CAN_MODE_FD)) {
 		return -ENOTSUP;
 	}
+#endif
 
 	// TODO timestamp
 
@@ -1090,30 +1087,19 @@ static int can_rcar_rscanfd_get_max_filters(const struct device *dev, bool ide)
 }
 
 #ifdef CONFIG_CAN_FD_MODE
-static int can_rcar_rscanfd_set_timing_data(const struct device *dev,
-					    const struct can_timing *timing)
+/*
+ * Configure the CAN FD timings (not the CAN 2.0 ones).
+ * Note : the channel must already be in Reset or Halt state.
+ */
+static void can_rcar_rscanfd_configure_timing_data(const struct device *dev,
+						  const struct can_timing *timing)
 {
 	const struct can_rcar_rscanfd_config *config = dev->config;
-	struct can_rcar_rscanfd_data *data = dev->data;
 	uint32_t base_offset, val, bit_rate;
-	int ret;
 
 	LOG_DBG("Set data timing for %s, sjw=%u, prop_seg=%u, seg1=%u, seg2=%u, presc=%u.",
 		dev->name, timing->sjw, timing->prop_seg, timing->phase_seg1,
 		timing->phase_seg2, timing->prescaler);
-
-	if (data->common.started) {
-		return -EBUSY;
-	}
-
-	k_mutex_lock(&data->inst_mutex, K_FOREVER);
-
-	/* The timing registers can only be changed in channel reset or halt modes */
-	ret = can_rcar_rscanfd_channel_enter_halt_mode(dev);
-	if (ret != 0) {
-		ret = -EIO;
-		goto exit_unlock;
-	}
 
 	base_offset = config->channel * CAN_RCAR_RSCANFD_CANFD_CHANNEL_REGISTERS_GROUP_SIZE;
 
@@ -1133,6 +1119,28 @@ static int can_rcar_rscanfd_set_timing_data(const struct device *dev,
 		val |= RSCANFD_CFDCNFDCFG_TDCE;
 		can_rcar_rscanfd_write(dev, base_offset + RSCANFD_CFDCNFDCFG, val);
 	}
+}
+
+static int can_rcar_rscanfd_set_timing_data(const struct device *dev,
+					    const struct can_timing *timing)
+{
+	struct can_rcar_rscanfd_data *data = dev->data;
+	int ret;
+
+	if (data->common.started) {
+		return -EBUSY;
+	}
+
+	k_mutex_lock(&data->inst_mutex, K_FOREVER);
+
+	/* The timing registers can only be changed in channel reset or halt modes */
+	ret = can_rcar_rscanfd_channel_enter_halt_mode(dev);
+	if (ret != 0) {
+		ret = -EIO;
+		goto exit_unlock;
+	}
+
+	can_rcar_rscanfd_configure_timing_data(dev, timing);
 
 	ret = 0;
 
@@ -1401,10 +1409,19 @@ static int can_rcar_rscanfd_init(const struct device *dev)
 		return ret;
 	}
 
-	ret = can_rcar_rscanfd_configure_timing(dev, &timing);
-	if (ret != 0) {
+	can_rcar_rscanfd_configure_timing(dev, &timing);
+
+#ifdef CONFIG_CAN_FD_MODE
+	ret = can_calc_timing_data(dev, &timing, config->common.bitrate_data,
+		config->common.sample_point_data);
+	if (ret < 0) {
+		LOG_ERR("Failed to find a timing for %s data bit rate %u bit/s (%d).",
+			dev->name, config->common.bitrate_data, ret);
 		return ret;
 	}
+
+	can_rcar_rscanfd_configure_timing_data(dev, &timing);
+#endif
 
 	config->configure_irq();
 
