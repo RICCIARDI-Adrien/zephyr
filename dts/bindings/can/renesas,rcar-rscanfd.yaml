@@ -14,3 +14,5 @@ properties:
   channel:
     type: int
     required: true
+    min: 0
+    max: 7
