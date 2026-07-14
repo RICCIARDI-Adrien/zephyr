@@ -1,0 +1,90 @@
+# Copyright (c) 2026 Semy BENADY
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Excelitas CaliPile TPiS 1S 1385 infrared thermopile sensor.
+
+  Datasheet:
+    https://media.digikey.com/pdf/data%20sheets/excelitas%20pdfs/tpis_1s_1385.pdf
+
+compatible: "excelitas,tpi1s1385"
+
+include: [sensor-device.yaml, i2c-device.yaml]
+
+properties:
+  int-gpios:
+    type: phandle-array
+    description: |
+      GPIO connected to the INT pin (open-drain, active low).
+      See datasheet section 1, Table 1.
+
+  slp1:
+    type: int
+    default: 1
+    description: |
+      Low-pass filter LP1 time constant select code (4 bits, reg 0x14[3:0]).
+      See datasheet section 6.2, Table 11.
+
+  slp2:
+    type: int
+    default: 8
+    description: |
+      Low-pass filter LP2 time constant select code (4 bits, reg 0x14[7:4]).
+      See datasheet section 6.2, Table 11.
+
+  slp3:
+    type: int
+    default: 2
+    description: |
+      Low-pass filter LP3 time constant select code (4 bits, reg 0x15[3:0]).
+      See datasheet section 6.2, Table 11.
+
+  src-select:
+    type: int
+    default: 1
+    description: |
+      Source select for presence determination (2 bits, reg 0x1A[3:2]).
+        0 = TPobject - TPobjLP2
+        1 = TPobjLP1 - TPobjLP2 (recommended, datasheet section 7.2)
+        2 = TPobject - TPobjLP2frozen
+        3 = TPobjLP1 - TPobjLP2frozen
+
+  cycle-time:
+    type: int
+    default: 2
+    description: |
+      Cycle time for motion differentiation (2 bits, reg 0x1A[1:0]).
+        0 =  30 ms
+        1 =  60 ms
+        2 = 120 ms (recommended, datasheet section 7.3)
+        3 = 140 ms
+
+  tpot-direction:
+    type: int
+    default: 0
+    description: |
+      TPOT threshold direction (1 bit, reg 0x1A[4]).
+        0 = interrupt if TPobject falls below threshold
+        1 = interrupt if TPobject exceeds threshold
+      See datasheet section 6.2.
+
+  presence-threshold:
+    type: int
+    default: 50
+    description: |
+      Presence detection threshold (8 bits, reg 0x16).
+      Datasheet section 7.2 recommends 50.
+
+  motion-threshold:
+    type: int
+    default: 10
+    description: |
+      Motion detection threshold (8 bits, reg 0x17).
+      Datasheet section 7.3 recommends 10.
+
+  amb-shock-threshold:
+    type: int
+    default: 10
+    description: |
+      Ambient temperature shock threshold (8 bits, reg 0x18).
+      See datasheet section 7.4.
