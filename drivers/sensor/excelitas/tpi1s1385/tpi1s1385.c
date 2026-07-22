@@ -1,20 +1,17 @@
 /*
- * Copyright (c) 2026 Semy BENADY
+ * Copyright (c) 2026 BayLibre <https://baylibre.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Driver for the Excelitas CaliPile TPiS 1S 1385 infrared thermopile sensor.
- *
- * Implements the sensor API sample_fetch and channel_get entry points. The
- * device is queried through I2C. Object and ambient temperatures are exposed
- * as SI channels (SENSOR_CHAN_DIE_TEMP, SENSOR_CHAN_AMBIENT_TEMP) computed
- * from the raw register values using the calibration constants read from the
- * on-chip EEPROM (see datasheet sections 8.3 and 8.4). The proximity channel
- * (SENSOR_CHAN_PROX) exposes the raw presence and motion counters.
+ * Sensor API driver for the Excelitas CaliPile TPiS 1S 1385 infrared
+ * thermopile. The device is accessed over I2C. It exposes the object and
+ * ambient temperatures as SENSOR_CHAN_DIE_TEMP and SENSOR_CHAN_AMBIENT_TEMP
+ * and the raw presence and motion counters as SENSOR_CHAN_PROX. The
+ * calibration constants required to convert the raw counts into Celsius are
+ * read once from the on chip EEPROM at initialization.
  */
 
 #include "tpi1s1385.h"
-#include "tpi1s1385_priv.h"
 
 #include <math.h>
 
@@ -32,26 +29,26 @@ LOG_MODULE_REGISTER(TPI1S1385, CONFIG_SENSOR_LOG_LEVEL);
 
 #define DT_DRV_COMPAT excelitas_tpi1s1385
 
-/* General Call reload command (datasheet section 5.5). */
+/* Command byte sent through the I2C General Call to reload the slave address. */
 #define TPI1S1385_GENERAL_CALL_RELOAD		0x04
 
-/* Datasheet section 5.5: up to 350 us to load the slave address from EEPROM. */
+/* Time the device needs to copy its slave address from EEPROM into the address register. */
 #define TPI1S1385_EEPROM_RELOAD_DELAY_US	350
 
-/* EEPROM_CONTROL bit that enables EEPROM read access (datasheet section 6.1). */
+/* Values written to EEPROM_CONTROL to enable or disable EEPROM read access. */
 #define TPI1S1385_EEPROM_CTRL_ENABLE		0x80
 #define TPI1S1385_EEPROM_CTRL_DISABLE		0x00
 
-/*
- * Datasheet section 8.4: the object temperature is derived from a non-linear
- * function of the thermopile output. For the default lookup table (LOOKUP=0)
- * the function is f(x) = x^TPI1S1385_LOOKUP_EXP.
- */
+/* Exponent of the lookup function used to compute the object temperature. */
 #define TPI1S1385_LOOKUP_EXP			3.8
 
-/* 25 degC expressed in Kelvin, used as reference in the calibration formulas. */
+/* Reference temperatures used by the calibration formulas. */
 #define TPI1S1385_T_REF_KELVIN			298.15
 #define TPI1S1385_ZERO_C_KELVIN			273.15
+
+/* Same reference temperatures expressed as integers in milli Kelvin. */
+#define TPI1S1385_T_REF_MILLIKELVIN		298150
+#define TPI1S1385_ZERO_C_MILLIKELVIN		273150
 
 int tpi1s1385_reg_read(const struct device *dev, uint8_t reg, uint8_t *val)
 {
@@ -105,53 +102,61 @@ static int tpi1s1385_sample_fetch(const struct device *dev,
 		ret = tpi1s1385_reg_read(dev, TPI1S1385_REG_TP_OBJECT_MSB,
 					 &reg01);
 		if (ret < 0) {
-			LOG_ERR("Failed to read TP_OBJECT MSB (0x01): %d", ret);
+			LOG_ERR("Failed to read TP_OBJECT MSB (0x%02X): %d",
+				TPI1S1385_REG_TP_OBJECT_MSB, ret);
 			goto unlock;
 		}
 
 		ret = tpi1s1385_reg_read(dev, TPI1S1385_REG_TP_OBJECT_MID,
 					 &reg02);
 		if (ret < 0) {
-			LOG_ERR("Failed to read TP_OBJECT MID (0x02): %d", ret);
+			LOG_ERR("Failed to read TP_OBJECT MID (0x%02X): %d",
+				TPI1S1385_REG_TP_OBJECT_MID, ret);
 			goto unlock;
 		}
 
 		ret = tpi1s1385_reg_read(dev, TPI1S1385_REG_TP_OBJECT_LSB,
 					 &reg03);
 		if (ret < 0) {
-			LOG_ERR("Failed to read shared register (0x03): %d",
-				ret);
+			LOG_ERR("Failed to read shared register (0x%02X): %d",
+				TPI1S1385_REG_TP_OBJECT_LSB, ret);
 			goto unlock;
 		}
 
-		data->tp_object = ((int32_t)reg01 << 9) |
-				  ((int32_t)reg02 << 1) |
-				  ((int32_t)reg03);
+		data->tp_object =
+			(int32_t)((reg01 << TPI1S1385_TP_OBJECT_MSB_SHIFT) |
+				  (reg02 << TPI1S1385_TP_OBJECT_MID_SHIFT) |
+				  ((reg03 & TPI1S1385_TP_OBJECT_LSB_MASK) >>
+					TPI1S1385_TP_OBJECT_LSB_SHIFT));
 
 		ret = tpi1s1385_reg_read(dev, TPI1S1385_REG_TP_AMBIENT_LSB,
 					 &reg04);
 		if (ret < 0) {
-			LOG_ERR("Failed to read TP_AMBIENT LSB (0x04): %d",
-				ret);
+			LOG_ERR("Failed to read TP_AMBIENT LSB (0x%02X): %d",
+				TPI1S1385_REG_TP_AMBIENT_LSB, ret);
 			goto unlock;
 		}
 
-		data->tp_ambient = (int16_t)(((uint16_t)reg03 << 8) |
-					     (uint16_t)reg04);
+		data->tp_ambient =
+			(int16_t)(((reg03 & TPI1S1385_TP_AMBIENT_MSB_MASK) <<
+					TPI1S1385_TP_AMBIENT_MSB_SHIFT) |
+				  reg04);
 	}
 
 	if (chan == SENSOR_CHAN_ALL || chan == SENSOR_CHAN_PROX) {
 		ret = tpi1s1385_reg_read(dev, TPI1S1385_REG_TP_PRESENCE,
 					 &data->tp_presence);
 		if (ret < 0) {
-			LOG_ERR("Failed to read TP_PRESENCE (0x0F): %d", ret);
+			LOG_ERR("Failed to read TP_PRESENCE (0x%02X): %d",
+				TPI1S1385_REG_TP_PRESENCE, ret);
 			goto unlock;
 		}
 
 		ret = tpi1s1385_reg_read(dev, TPI1S1385_REG_TP_MOTION,
 					 &data->tp_motion);
 		if (ret < 0) {
-			LOG_ERR("Failed to read TP_MOTION (0x10): %d", ret);
+			LOG_ERR("Failed to read TP_MOTION (0x%02X): %d",
+				TPI1S1385_REG_TP_MOTION, ret);
 			goto unlock;
 		}
 	}
@@ -161,8 +166,8 @@ static int tpi1s1385_sample_fetch(const struct device *dev,
 		ret = tpi1s1385_reg_read(dev, TPI1S1385_REG_INTERRUPT_STATUS,
 					 &data->interrupt_status);
 		if (ret < 0) {
-			LOG_ERR("Failed to read INTERRUPT_STATUS (0x12): %d",
-				ret);
+			LOG_ERR("Failed to read INTERRUPT_STATUS (0x%02X): %d",
+				TPI1S1385_REG_INTERRUPT_STATUS, ret);
 			goto unlock;
 		}
 	}
@@ -174,25 +179,21 @@ unlock:
 }
 
 /*
- * Compute the ambient temperature in Kelvin from the raw TP_AMBIENT counts and
- * the calibration constants stored in EEPROM (datasheet section 8.3):
- *
- *     Tamb_K = 298.15 + (TPambient - PTAT25) * 100 / M
+ * Ambient temperature in milli Kelvin, computed from the raw counts and the
+ * PTAT25 and M calibration constants. The intermediate product is widened
+ * to 64 bits because the numerator can exceed the int32 range.
  */
-static double tpi1s1385_ambient_kelvin(const struct tpi1s1385_data *data)
+static int32_t tpi1s1385_ambient_millikelvin(const struct tpi1s1385_data *data)
 {
-	return TPI1S1385_T_REF_KELVIN +
-	       ((double)data->tp_ambient - (double)data->eeprom.ptat25) *
-	       100.0 / (double)data->eeprom.m;
+	int32_t delta = (int32_t)data->tp_ambient - (int32_t)data->eeprom.ptat25;
+
+	return TPI1S1385_T_REF_MILLIKELVIN +
+	       (int32_t)(((int64_t)delta * 100000) / data->eeprom.m);
 }
 
 /*
- * Compute the object temperature in Kelvin (datasheet section 8.4):
- *
- *     k = (Uout1 - U0) / (f(Tobj1_K) - f(298.15))
- *     f(x) = x^3.8
- *     Tobject_K = F[(TPobject - U0) / k + f(Tamb_K)]
- *     F(x) = x^(1/3.8)
+ * Object temperature in Kelvin, computed from the raw counts, the ambient
+ * temperature and the U0, Uout1 and Tobj1 calibration constants.
  */
 static double tpi1s1385_object_kelvin(const struct tpi1s1385_data *data,
 				      double tamb_k)
@@ -216,17 +217,21 @@ static int tpi1s1385_channel_get(const struct device *dev,
 				 struct sensor_value *val)
 {
 	struct tpi1s1385_data *data = dev->data;
-	double tamb_c, tobj_c;
+	int32_t tamb_mc;
+	double tobj_c;
 
 	switch (chan) {
 	case SENSOR_CHAN_AMBIENT_TEMP:
-		tamb_c = tpi1s1385_ambient_kelvin(data) -
-			 TPI1S1385_ZERO_C_KELVIN;
-		return sensor_value_from_double(val, tamb_c);
+		tamb_mc = tpi1s1385_ambient_millikelvin(data) -
+			  TPI1S1385_ZERO_C_MILLIKELVIN;
+		val->val1 = tamb_mc / 1000;
+		val->val2 = (tamb_mc % 1000) * 1000;
+		return 0;
 
 	case SENSOR_CHAN_DIE_TEMP:
 		tobj_c = tpi1s1385_object_kelvin(
-				data, tpi1s1385_ambient_kelvin(data)) -
+				data,
+				tpi1s1385_ambient_millikelvin(data) / 1000.0) -
 			 TPI1S1385_ZERO_C_KELVIN;
 		return sensor_value_from_double(val, tobj_c);
 
@@ -261,8 +266,8 @@ static int tpi1s1385_read_eeprom(const struct device *dev)
 	if (ret < 0) {
 		goto done;
 	}
-	/* PTAT25 is a 15-bit value; bit 7 of the MSB register is reserved. */
-	data->eeprom.ptat25 = ((uint16_t)(msb & 0x7F) << 8) | lsb;
+	data->eeprom.ptat25 =
+		((uint16_t)(msb & TPI1S1385_EEPROM_PTAT25_MSB_MASK) << 8) | lsb;
 
 	ret = tpi1s1385_reg_read(dev, TPI1S1385_REG_EEPROM_M_MSB, &msb);
 	if (ret < 0) {
@@ -304,7 +309,7 @@ static int tpi1s1385_read_eeprom(const struct device *dev)
 				 &data->eeprom.lookup);
 
 done:
-	/* Restore EEPROM_CONTROL to disabled regardless of previous errors. */
+	/* EEPROM_CONTROL is always restored to the disabled value on exit. */
 	(void)tpi1s1385_reg_write(dev, TPI1S1385_REG_EEPROM_CONTROL,
 				  TPI1S1385_EEPROM_CTRL_DISABLE);
 	if (ret < 0) {
@@ -332,20 +337,18 @@ static int tpi1s1385_init(const struct device *dev)
 	}
 
 	/*
-	 * Datasheet sections 5.3 and 5.5: after power-up the device only
-	 * responds to the General Call Address (0x00). Issue a write to 0x00
-	 * with the reload command so the device copies its slave address
+	 * After power up the device only replies to the General Call address.
+	 * Sending the reload command tells it to copy its own slave address
 	 * from EEPROM into the address register.
 	 */
 	ret = i2c_write(config->i2c.bus, &reload_cmd, sizeof(reload_cmd), 0x00);
 	if (ret < 0) {
-		LOG_WRN("General Call failed (ret=%d), device may already be "
-			"initialized", ret);
+		LOG_WRN("General Call failed (ret=%d), device may already be initialized", ret);
 	}
 
 	k_usleep(TPI1S1385_EEPROM_RELOAD_DELAY_US);
 
-	/* Verify the device now answers on its slave address. */
+	/* Read back a register to verify the device now answers at its slave address. */
 	ret = i2c_reg_read_byte_dt(&config->i2c,
 				   TPI1S1385_REG_GENERAL_CALL,
 				   &slave_addr);
@@ -356,10 +359,11 @@ static int tpi1s1385_init(const struct device *dev)
 	}
 
 	/*
-	 * Datasheet section 6.1: control register values are undefined after
-	 * power-up and require an initialization procedure.
+	 * Control register values are undefined after power up and must be
+	 * programmed before the sensor can be used.
 	 */
-	slp12 = ((config->slp2 & 0x0F) << 4) | (config->slp1 & 0x0F);
+	slp12 = ((config->slp2 & TPI1S1385_SLP_FIELD_MASK) << TPI1S1385_SLP2_SHIFT) |
+		(config->slp1 & TPI1S1385_SLP_FIELD_MASK);
 	ret = tpi1s1385_reg_write(dev, TPI1S1385_REG_SLP12, slp12);
 	if (ret < 0) {
 		LOG_ERR("Failed to write SLP12: %d", ret);
@@ -367,7 +371,7 @@ static int tpi1s1385_init(const struct device *dev)
 	}
 
 	ret = tpi1s1385_reg_write(dev, TPI1S1385_REG_SLP3,
-				  config->slp3 & 0x0F);
+				  config->slp3 & TPI1S1385_SLP_FIELD_MASK);
 	if (ret < 0) {
 		LOG_ERR("Failed to write SLP3: %d", ret);
 		return ret;
@@ -394,9 +398,11 @@ static int tpi1s1385_init(const struct device *dev)
 		return ret;
 	}
 
-	src_reg = ((config->tpot_direction & 0x01) << 4) |
-		  ((config->src_select & 0x03) << 2) |
-		  (config->cycle_time & 0x03);
+	src_reg = ((config->tpot_direction & TPI1S1385_TPOT_DIRECTION_MASK) <<
+			TPI1S1385_TPOT_DIRECTION_SHIFT) |
+		  ((config->src_select & TPI1S1385_SRC_SELECT_MASK) <<
+			TPI1S1385_SRC_SELECT_SHIFT) |
+		  (config->cycle_time & TPI1S1385_CYCLE_TIME_MASK);
 	ret = tpi1s1385_reg_write(dev, TPI1S1385_REG_SRC_SELECT, src_reg);
 	if (ret < 0) {
 		LOG_ERR("Failed to write SRC/cycle/direction: %d", ret);
@@ -404,8 +410,9 @@ static int tpi1s1385_init(const struct device *dev)
 	}
 
 	/*
-	 * Datasheet section 7.5: the over-temperature flag is set after
-	 * power-up. Read INTERRUPT_STATUS to clear the latched flags.
+	 * The over temperature flag is asserted at power up. Reading
+	 * INTERRUPT_STATUS here clears any latched flag before the
+	 * application starts using the trigger interface.
 	 */
 	ret = tpi1s1385_reg_read(dev, TPI1S1385_REG_INTERRUPT_STATUS,
 				 &int_status);
@@ -414,7 +421,6 @@ static int tpi1s1385_init(const struct device *dev)
 		return ret;
 	}
 
-	/* Datasheet sections 5.8 and 8.1 to 8.4: read the calibration data. */
 	ret = tpi1s1385_read_eeprom(dev);
 	if (ret < 0) {
 		return ret;

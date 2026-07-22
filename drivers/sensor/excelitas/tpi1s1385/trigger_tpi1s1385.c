@@ -1,25 +1,17 @@
 /*
- * Copyright (c) 2026 Semy BENADY
+ * Copyright (c) 2026 BayLibre <https://baylibre.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Trigger support (GPIO interrupt) for the Excelitas TPiS 1S 1385.
- *
- * The device INT pin is open-drain, active low, and can be programmed to
- * assert on any combination of the following events:
- *   - Presence detected           (TPpresence)
- *   - Motion detected             (TPmotion)
- *   - Ambient temperature shock   (TPamb shock)
- *   - Over/under-temperature      (TPOT)
- *   - Internal timer
- *
- * The event selection is controlled through the INTERRUPT_MASK register
- * (0x19). Latched flags in INTERRUPT_STATUS (0x12) are cleared as soon as
- * that register is read.
+ * GPIO based trigger support for the Excelitas TPiS 1S 1385. The INT pin
+ * is open drain and active low. The device can raise interrupts on
+ * presence, motion, ambient temperature shock, over temperature and its
+ * internal timer. The set of sources that assert the INT pin is selected
+ * by the INTERRUPT_MASK register. Reading INTERRUPT_STATUS clears the
+ * latched flags.
  */
 
 #include "tpi1s1385.h"
-#include "tpi1s1385_priv.h"
 
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
@@ -30,6 +22,7 @@
 
 LOG_MODULE_DECLARE(TPI1S1385, CONFIG_SENSOR_LOG_LEVEL);
 
+/* Enables or disables the GPIO edge interrupt bound to the sensor INT pin. */
 static inline void setup_int(const struct device *dev, bool enable)
 {
 	const struct tpi1s1385_config *cfg = dev->config;
@@ -49,9 +42,11 @@ int tpi1s1385_attr_set(const struct device *dev,
 		       enum sensor_attribute attr,
 		       const struct sensor_value *val)
 {
+	struct tpi1s1385_data *drv_data = dev->data;
 	const struct tpi1s1385_config *cfg = dev->config;
 	int64_t value;
 	uint8_t reg;
+	int ret;
 
 	if (!cfg->int_gpio.port) {
 		return -ENOTSUP;
@@ -69,7 +64,11 @@ int tpi1s1385_attr_set(const struct device *dev,
 
 	value = (int64_t)val->val1;
 
-	if (tpi1s1385_reg_write(dev, reg, (uint8_t)value) < 0) {
+	k_mutex_lock(&drv_data->lock, K_FOREVER);
+	ret = tpi1s1385_reg_write(dev, reg, (uint8_t)value);
+	k_mutex_unlock(&drv_data->lock);
+
+	if (ret < 0) {
 		LOG_DBG("Failed to set attribute");
 		return -EIO;
 	}
@@ -77,6 +76,11 @@ int tpi1s1385_attr_set(const struct device *dev,
 	return 0;
 }
 
+/*
+ * GPIO interrupt callback. Runs in interrupt context, masks the sensor
+ * interrupt until the bottom half has processed it, then signals the
+ * bottom half through either a semaphore or the system work queue.
+ */
 static void tpi1s1385_gpio_callback(const struct device *dev,
 				    struct gpio_callback *cb, uint32_t pins)
 {
@@ -95,24 +99,41 @@ static void tpi1s1385_gpio_callback(const struct device *dev,
 #endif
 }
 
+/*
+ * Bottom half that runs in thread context. Reads INTERRUPT_STATUS to find
+ * out which sources fired, takes a snapshot of the trigger handlers under
+ * the spinlock so they cannot change while they are being invoked, calls
+ * the matching handlers and finally re enables the GPIO interrupt.
+ */
 static void tpi1s1385_thread_cb(const struct device *dev)
 {
 	struct tpi1s1385_data *drv_data = dev->data;
+	sensor_trigger_handler_t motion_handler, presence_handler;
+	const struct sensor_trigger *motion_trig, *presence_trig;
+	k_spinlock_key_t key;
 	uint8_t source;
 
+	k_mutex_lock(&drv_data->lock, K_FOREVER);
 	if (tpi1s1385_reg_read(dev, TPI1S1385_REG_INTERRUPT_STATUS,
 			       &source) < 0) {
+		k_mutex_unlock(&drv_data->lock);
 		return;
 	}
+	k_mutex_unlock(&drv_data->lock);
 
-	if ((source & TPI1S1385_INT_TP_MOTION) &&
-	    drv_data->motion_handler != NULL) {
-		drv_data->motion_handler(dev, drv_data->motion_trig);
+	key = k_spin_lock(&drv_data->trigger_lock);
+	motion_handler = drv_data->motion_handler;
+	motion_trig = drv_data->motion_trig;
+	presence_handler = drv_data->presence_handler;
+	presence_trig = drv_data->presence_trig;
+	k_spin_unlock(&drv_data->trigger_lock, key);
+
+	if ((source & TPI1S1385_INT_TP_MOTION) && motion_handler != NULL) {
+		motion_handler(dev, motion_trig);
 	}
 
-	if ((source & TPI1S1385_INT_TP_PRESENCE) &&
-	    drv_data->presence_handler != NULL) {
-		drv_data->presence_handler(dev, drv_data->presence_trig);
+	if ((source & TPI1S1385_INT_TP_PRESENCE) && presence_handler != NULL) {
+		presence_handler(dev, presence_trig);
 	}
 
 	setup_int(dev, true);
@@ -149,13 +170,16 @@ int tpi1s1385_trigger_set(const struct device *dev,
 {
 	struct tpi1s1385_data *drv_data = dev->data;
 	const struct tpi1s1385_config *cfg = dev->config;
+	k_spinlock_key_t key;
 
 	if (!cfg->int_gpio.port) {
 		return -ENOTSUP;
 	}
 
+	k_mutex_lock(&drv_data->lock, K_FOREVER);
 	setup_int(dev, false);
 
+	key = k_spin_lock(&drv_data->trigger_lock);
 	if (trig->type == SENSOR_TRIG_MOTION) {
 		drv_data->motion_handler = handler;
 		drv_data->motion_trig = trig;
@@ -163,8 +187,10 @@ int tpi1s1385_trigger_set(const struct device *dev,
 		drv_data->presence_handler = handler;
 		drv_data->presence_trig = trig;
 	}
+	k_spin_unlock(&drv_data->trigger_lock, key);
 
 	setup_int(dev, true);
+	k_mutex_unlock(&drv_data->lock);
 
 	return 0;
 }
@@ -174,18 +200,6 @@ int tpi1s1385_trigger_init(const struct device *dev)
 	struct tpi1s1385_data *drv_data = dev->data;
 	const struct tpi1s1385_config *cfg = dev->config;
 	uint8_t mask = TPI1S1385_INT_TP_MOTION;
-
-	/*
-	 * Only enable the motion hardware interrupt by default. This avoids
-	 * spurious wake-ups from the presence and timer sources; users that
-	 * need them can enable additional bits at runtime by writing to
-	 * INTERRUPT_MASK through tpi1s1385_reg_update().
-	 */
-	if (tpi1s1385_reg_update(dev, TPI1S1385_REG_INTERRUPT_MASK,
-				 mask, mask) < 0) {
-		LOG_DBG("Failed to enable interrupt source");
-		return -EIO;
-	}
 
 	drv_data->dev = dev;
 
@@ -216,6 +230,23 @@ int tpi1s1385_trigger_init(const struct device *dev)
 #elif defined(CONFIG_TPI1S1385_TRIGGER_GLOBAL_THREAD)
 	k_work_init(&drv_data->work, tpi1s1385_work_cb);
 #endif
+
+	/*
+	 * Only the motion source is enabled by default. This keeps the INT
+	 * pin quiet for the presence and timer sources, which the user can
+	 * turn on at runtime by writing to INTERRUPT_MASK.
+	 */
+	if (tpi1s1385_reg_update(dev, TPI1S1385_REG_INTERRUPT_MASK,
+				 mask, mask) < 0) {
+		LOG_DBG("Failed to enable interrupt source");
+		return -EIO;
+	}
+
+	/*
+	 * The GPIO interrupt is enabled last, once the bottom half is ready
+	 * to service it.
+	 */
+	setup_int(dev, true);
 
 	return 0;
 }

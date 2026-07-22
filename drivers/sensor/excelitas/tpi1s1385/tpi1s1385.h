@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026 Semy BENADY
+ * Copyright (c) 2026 BayLibre <https://baylibre.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -10,20 +10,22 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/util.h>
 
 #ifdef CONFIG_TPI1S1385_TRIGGER
 #include <zephyr/drivers/gpio.h>
 #endif
 
-/* Register map (see datasheet section 6.1) */
+/* Register map. */
 #define TPI1S1385_REG_GENERAL_CALL		0x00
 
 #define TPI1S1385_REG_TP_OBJECT_MSB		0x01
 #define TPI1S1385_REG_TP_OBJECT_MID		0x02
 /*
- * Reg 0x03 is shared: it holds the least significant bit of the 17-bit
- * TP_OBJECT value and the most significant byte of the 16-bit TP_AMBIENT
- * value (see datasheet section 6.1).
+ * Register 0x03 is shared. Bit 7 stores the least significant bit of the
+ * TP_OBJECT sample and bits 6:0 store the most significant bits of the
+ * TP_AMBIENT sample.
  */
 #define TPI1S1385_REG_TP_OBJECT_LSB		0x03
 #define TPI1S1385_REG_TP_AMBIENT_MSB		0x03
@@ -31,7 +33,7 @@
 
 #define TPI1S1385_REG_TP_OBJ_LP1_MSB		0x05
 #define TPI1S1385_REG_TP_OBJ_LP1_MID		0x06
-/* Reg 0x07 is shared between LP1 LSB and LP2 MSB. */
+/* Register 0x07 is shared between LP1 LSB and LP2 MSB. */
 #define TPI1S1385_REG_TP_OBJ_LP1_LSB		0x07
 #define TPI1S1385_REG_TP_OBJ_LP2_MSB		0x07
 #define TPI1S1385_REG_TP_OBJ_LP2_MID		0x08
@@ -48,11 +50,10 @@
 #define TPI1S1385_REG_TP_MOTION			0x10
 #define TPI1S1385_REG_TP_AMB_SHOCK		0x11
 
-/* Read clears the flags. */
+/* Reading this register clears the latched interrupt flags. */
 #define TPI1S1385_REG_INTERRUPT_STATUS		0x12
 #define TPI1S1385_REG_STATUS			0x13
 
-/* Low-pass filter time constants (datasheet section 6.2). */
 #define TPI1S1385_REG_SLP12			0x14
 #define TPI1S1385_REG_SLP3			0x15
 
@@ -72,7 +73,7 @@
 #define TPI1S1385_REG_EEPROM_PROTOCOL		0x20
 #define TPI1S1385_REG_EEPROM_CHECKSUM		0x21
 
-/* Calibration constants stored in EEPROM (datasheet section 8.1). */
+/* Calibration constants stored in EEPROM. */
 #define TPI1S1385_REG_EEPROM_LOOKUP		41
 #define TPI1S1385_REG_EEPROM_PTAT25_MSB		42
 #define TPI1S1385_REG_EEPROM_PTAT25_LSB		43
@@ -86,15 +87,96 @@
 
 #define TPI1S1385_REG_SLAVE_ADDRESS		0x3F
 
-/* Interrupt status/mask bits (register 0x12 and 0x19). */
-#define TPI1S1385_INT_TPOT			BIT(4)	/* Over-temperature */
-#define TPI1S1385_INT_TP_PRESENCE		BIT(3)	/* Presence */
-#define TPI1S1385_INT_TP_MOTION			BIT(2)	/* Motion */
-#define TPI1S1385_INT_TP_AMB_SHOCK		BIT(1)	/* Ambient shock */
-#define TPI1S1385_INT_TIMER			BIT(0)	/* Timer */
+/*
+ * Bit layout of the 17 bit TP_OBJECT and 15 bit TP_AMBIENT samples inside
+ * the raw register bytes 0x01, 0x02, 0x03 and 0x04.
+ */
+#define TPI1S1385_TP_OBJECT_MSB_SHIFT		9
+#define TPI1S1385_TP_OBJECT_MID_SHIFT		1
+#define TPI1S1385_TP_OBJECT_LSB_MASK		BIT(7)
+#define TPI1S1385_TP_OBJECT_LSB_SHIFT		7
+#define TPI1S1385_TP_AMBIENT_MSB_MASK		GENMASK(6, 0)
+#define TPI1S1385_TP_AMBIENT_MSB_SHIFT		8
 
-/* Default I2C slave address after EEPROM reload (datasheet section 5.5). */
+/* PTAT25 is a 15 bit value stored across two registers, bit 7 of the MSB is reserved. */
+#define TPI1S1385_EEPROM_PTAT25_MSB_MASK	GENMASK(6, 0)
+
+/* Field layouts for the packed configuration registers. */
+#define TPI1S1385_SLP_FIELD_MASK		GENMASK(3, 0)
+#define TPI1S1385_SLP2_SHIFT			4
+#define TPI1S1385_CYCLE_TIME_MASK		GENMASK(1, 0)
+#define TPI1S1385_SRC_SELECT_MASK		GENMASK(1, 0)
+#define TPI1S1385_SRC_SELECT_SHIFT		2
+#define TPI1S1385_TPOT_DIRECTION_MASK		BIT(0)
+#define TPI1S1385_TPOT_DIRECTION_SHIFT		4
+
+/* Interrupt status and interrupt mask bits, valid in registers 0x12 and 0x19. */
+#define TPI1S1385_INT_TPOT			BIT(4)
+#define TPI1S1385_INT_TP_PRESENCE		BIT(3)
+#define TPI1S1385_INT_TP_MOTION			BIT(2)
+#define TPI1S1385_INT_TP_AMB_SHOCK		BIT(1)
+#define TPI1S1385_INT_TIMER			BIT(0)
+
+/* Default I2C slave address loaded from EEPROM after a General Call reload. */
 #define TPI1S1385_DEFAULT_I2C_ADDR		0x0C
+
+/* Calibration constants read once from the on chip EEPROM at init time. */
+struct tpi1s1385_eeprom {
+	uint16_t ptat25;
+	uint16_t m;
+	uint16_t u0;
+	uint16_t uout1;
+	uint8_t  tobj1;
+	uint8_t  lookup;
+};
+
+struct tpi1s1385_config {
+	struct i2c_dt_spec i2c;
+#ifdef CONFIG_TPI1S1385_TRIGGER
+	struct gpio_dt_spec int_gpio;
+#endif
+	uint8_t slp1;
+	uint8_t slp2;
+	uint8_t slp3;
+	uint8_t src_select;
+	uint8_t cycle_time;
+	uint8_t tpot_direction;
+	uint8_t presence_threshold;
+	uint8_t motion_threshold;
+	uint8_t amb_shock_threshold;
+};
+
+struct tpi1s1385_data {
+	int32_t tp_object;
+	int16_t tp_ambient;
+	uint8_t tp_presence;
+	uint8_t tp_motion;
+	uint8_t interrupt_status;
+
+	/* Serializes I2C transactions and the cached sample state. */
+	struct k_mutex lock;
+	/* Synchronizes trigger handler updates with the interrupt path. */
+	struct k_spinlock trigger_lock;
+
+	struct tpi1s1385_eeprom eeprom;
+
+#ifdef CONFIG_TPI1S1385_TRIGGER
+	const struct device *dev;
+	struct gpio_callback gpio_cb;
+	sensor_trigger_handler_t presence_handler;
+	const struct sensor_trigger *presence_trig;
+	sensor_trigger_handler_t motion_handler;
+	const struct sensor_trigger *motion_trig;
+
+#ifdef CONFIG_TPI1S1385_TRIGGER_OWN_THREAD
+	K_KERNEL_STACK_MEMBER(thread_stack, CONFIG_TPI1S1385_THREAD_STACK_SIZE);
+	struct k_thread thread;
+	struct k_sem gpio_sem;
+#elif defined(CONFIG_TPI1S1385_TRIGGER_GLOBAL_THREAD)
+	struct k_work work;
+#endif
+#endif /* CONFIG_TPI1S1385_TRIGGER */
+};
 
 int tpi1s1385_reg_read(const struct device *dev, uint8_t reg, uint8_t *val);
 int tpi1s1385_reg_write(const struct device *dev, uint8_t reg, uint8_t val);

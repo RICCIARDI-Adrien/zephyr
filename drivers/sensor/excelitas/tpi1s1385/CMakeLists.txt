@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Semy BENADY
+# Copyright (c) 2026 BayLibre <https://baylibre.com>
 # SPDX-License-Identifier: Apache-2.0
 
 zephyr_library()
