@@ -130,6 +130,8 @@ properties:
 
   presence-threshold:
     type: int
+    min: 0
+    max: 255
     default: 50
     description: |
       Unsigned eight bit threshold written to register 0x16. Accepted
@@ -137,6 +139,8 @@ properties:
 
   motion-threshold:
     type: int
+    min: 0
+    max: 255
     default: 10
     description: |
       Unsigned eight bit threshold written to register 0x17. Accepted
@@ -144,6 +148,8 @@ properties:
 
   amb-shock-threshold:
     type: int
+    min: 0
+    max: 255
     default: 10
     description: |
       Unsigned eight bit threshold written to register 0x18. Accepted
