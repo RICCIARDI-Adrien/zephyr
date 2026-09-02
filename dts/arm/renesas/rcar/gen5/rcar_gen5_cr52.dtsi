@@ -445,5 +445,12 @@
 				status = "disabled";
 			};
 		};
+
+
+		rswitch3: ethernet@c9bc0000 {
+			compatible = "renesas,rcar-rswitch3";
+			reg = <0xc9bc0000 0x40000>;
+			status = "disabled";
+		};
 	};
 };

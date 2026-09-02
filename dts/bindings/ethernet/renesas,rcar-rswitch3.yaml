@@ -1,0 +1,19 @@
+# Copyright (c) 2026 BayLibre, SAS
+# SPDX-License-Identifier: Apache-2.0
+
+description: Renesas R-Car R-Switch 3 Ethernet
+
+compatible: "renesas,rcar-rswitch3"
+
+include: ethernet-controller.yaml
+
+properties:
+  reg:
+    required: true
+
+    # TODO
+  #interrupts:
+  #  required: true
+
+  #phy-handle:
+  #  required: true
