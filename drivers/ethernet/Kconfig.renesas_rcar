@@ -1,0 +1,15 @@
+# Copyright (c) 2026 BayLibre, SAS
+# SPDX-License-Identifier: Apache-2.0
+
+config ETH_RENESAS_RCAR_RSWITCH3
+	bool "Renesas R-Car R-Switch 3 Ethernet"
+	default y
+	depends on DT_HAS_RENESAS_RCAR_RSWITCH3_ENABLED
+	help
+	  Enable the Renesas R-Car R-Switch 3 Ethernet driver.
+
+if ETH_RENESAS_RCAR_RSWITCH3
+
+# TODO
+
+endif
