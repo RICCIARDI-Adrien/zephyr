@@ -199,3 +199,8 @@
 	pinctrl-names = "default";
 	status = "okay";
 };
+
+&rswitch3 {
+	// TODO
+	status = "okay";
+};
