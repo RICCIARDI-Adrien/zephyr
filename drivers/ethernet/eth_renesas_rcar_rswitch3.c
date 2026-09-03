@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <zephyr/drivers/clock_control.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/ethernet.h>
 
@@ -11,14 +12,23 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch3, CONFIG_ETHERNET_LOG_LEVEL);
 
 #define DT_DRV_COMPAT renesas_rcar_rswitch3
 
+/* The total amount of TSN IP blocks. */
+#define ETH_RSWITCH3_TSN_COUNT 8
+
 struct eth_rswitch3_port_config {
 	int id;
 	struct net_eth_mac_config mac_config;
 };
 
 struct eth_rswitch3_config {
-	const struct eth_rswitch3_port_config *port_configs;
-	size_t ports_count;
+	//const struct eth_rswitch3_port_config *port_configs;
+	//size_t ports_count;
+	const struct device *clock_dev;
+	clock_control_subsys_t rsw3_clk;
+	clock_control_subsys_t rsw3_tsn_global_clk;
+	clock_control_subsys_t rsw3_aes_clk;
+	clock_control_subsys_t rsw3_tsn_clks[ETH_RSWITCH3_TSN_COUNT];
+	clock_control_subsys_t rsw3_mfwd_clk;
 };
 
 //#define RSWITCH3_PORT_INIT
@@ -32,9 +42,10 @@ static void eth_rswitch3_iface_init(struct net_if *iface)
 	LOG_WRN("INIT IFACE nom=%s, id=%d", dev->name, port_config->id);
 	LOG_HEXDUMP_WRN(port_config->mac_config.addr, port_config->mac_config.addr_len, "MAC=");
 
-	//ethernet_init(iface);
-
-	//net_eth_carrier_on(iface);
+	net_if_set_link_addr(iface, port_config->mac_config.addr, port_config->mac_config.addr_len,
+		NET_LINK_ETHERNET);
+	ethernet_init(iface);
+	net_if_carrier_off(iface);
 }
 
 static const struct ethernet_api eth_rswitch3_ethernet_api = {
@@ -45,15 +56,10 @@ static int eth_rswitch3_device_init(const struct device *dev)
 {
 	const struct eth_rswitch3_config *config = dev->config;
 
-	LOG_ERR("CACA, nbr ports=%d", config->ports_count);
+	LOG_ERR("CACA");
 
 	return 0;
 }
-
-#define ETH_RSWITCH3_PORT_CONFIG_INIT(n) \
-	{ \
-		.id = 6 \
-	},
 
 #define ETH_RSWITCH3_PORT_DEVICE_INIT(n) \
 	static const struct eth_rswitch3_port_config eth_rswitch3_port_config_##n = { \
@@ -67,23 +73,8 @@ static int eth_rswitch3_device_init(const struct device *dev)
 		&eth_rswitch3_port_config_##n, \
 		CONFIG_ETH_INIT_PRIORITY, &eth_rswitch3_ethernet_api, NET_ETH_MTU);
 
-#if 0
-	ETH_NET_DEVICE_DT_INST_DEFINE(n, NULL, NULL, \
-		NULL /* DATA TODO */, \
-		NULL, /*cfg*/ \
-		CONFIG_ETH_INIT_PRIORITY, \
-		&eth_rswitch3_ethernet_api, \
-		NET_ETH_MTU)
-#endif
-
 #define ETH_RSWITCH3_INIT(n) \
-	static const struct eth_rswitch3_port_config eth_rswitch3_port_configs_##n[] = { \
-		DT_FOREACH_CHILD(DT_INST_CHILD(n, ports), ETH_RSWITCH3_PORT_CONFIG_INIT) \
-	}; \
-\
 	static const struct eth_rswitch3_config eth_rswitch3_config_##n = { \
-		.port_configs = eth_rswitch3_port_configs_##n, \
-		.ports_count = ARRAY_SIZE(eth_rswitch3_port_configs_##n) \
 	}; \
 \
 	DT_FOREACH_CHILD(DT_INST_CHILD(n, ports), ETH_RSWITCH3_PORT_DEVICE_INIT); \
