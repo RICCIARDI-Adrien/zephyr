@@ -209,42 +209,44 @@
 			// TEST
 			id = <0>;
 			//phy-handle = <&eth_phy_0>;
+			local-mac-address = [B0 0B C1 A0 BE EF];
 		};
 
 		port3 {
 			// TEST
 			id = <3>;
 			//phy-handle = <&eth_phy_3>;
+			local-mac-address = [DE AD F0 CC AC 1A];
 		};
 
 		port6 {
 			// TEST
 			id = <6>;
 			//phy-handle = <&eth_phy_6>;
-			local-mac-address = [FA DA CA CA BA BE];
 		};
 
 		port7 {
 			// TEST
 			id = <7>;
 			//phy-handle = <&eth_phy_7>;
+			local-mac-address = [FA DA CA CA BA BE];
 		};
 	};
 
 	mdio {
-		compatible = "atmel,sam-mdio"; // TEST
-		#address-cells = <1>;
+		//compatible = "atmel,sam-mdio"; // TEST
+		/*#address-cells = <1>;
 		#size-cells = <0>;
 		status = "okay";
 
-		/*eth_phy_0: ethernet-phy@1 {
+		eth_phy_0: ethernet-phy@1 {
 			reg = <0x1>;
 			compatible = "ti,dp83867"; // TEST
 			ti,interface-type = "rgmii";
 			status = "okay";
-		};
+		};*/
 
-		eth_phy_3: ethernet-phy@2 {
+		/*eth_phy_3: ethernet-phy@2 {
 			reg = <0x2>;
 			compatible = "ti,dp83867"; // TEST
 			ti,interface-type = "rgmii";
