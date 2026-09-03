@@ -13,7 +13,7 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch3, CONFIG_ETHERNET_LOG_LEVEL);
 
 struct eth_rswitch3_port_config {
 	int id;
-	//struct net_eth_mac_config mac_config;
+	struct net_eth_mac_config mac_config;
 };
 
 struct eth_rswitch3_config {
@@ -26,11 +26,11 @@ struct eth_rswitch3_config {
 static void eth_rswitch3_iface_init(struct net_if *iface)
 {
 	const struct device *dev = net_if_get_device(iface);
+	const struct eth_rswitch3_port_config *port_config = dev->config;
 
 	// TODO
-	LOG_WRN("INIT IFACE %s", dev->name);
-
-
+	LOG_WRN("INIT IFACE nom=%s, id=%d", dev->name, port_config->id);
+	LOG_HEXDUMP_WRN(port_config->mac_config.addr, port_config->mac_config.addr_len, "MAC=");
 
 	//ethernet_init(iface);
 
@@ -56,10 +56,15 @@ static int eth_rswitch3_device_init(const struct device *dev)
 	},
 
 #define ETH_RSWITCH3_PORT_DEVICE_INIT(n) \
-	ETH_NET_DEVICE_INIT_INSTANCE(rswitch3_port_##n, "port_"/* STRINGIFY(n)*/, n, \
+	static const struct eth_rswitch3_port_config eth_rswitch3_port_config_##n = { \
+		.id = DT_PROP(n, id), \
+		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(n) \
+	}; \
+\
+	ETH_NET_DEVICE_INIT_INSTANCE(rswitch3_port_##n, "eth" STRINGIFY(DT_PROP(n, id)), n, \
 		NULL, NULL, \
 		NULL, /* TODO data */ \
-		NULL, /* TODO cfg */ \
+		&eth_rswitch3_port_config_##n, \
 		CONFIG_ETH_INIT_PRIORITY, &eth_rswitch3_ethernet_api, NET_ETH_MTU);
 
 #if 0
@@ -73,7 +78,7 @@ static int eth_rswitch3_device_init(const struct device *dev)
 
 #define ETH_RSWITCH3_INIT(n) \
 	static const struct eth_rswitch3_port_config eth_rswitch3_port_configs_##n[] = { \
-		DT_INST_FOREACH_CHILD(n, ETH_RSWITCH3_PORT_CONFIG_INIT) \
+		DT_FOREACH_CHILD(DT_INST_CHILD(n, ports), ETH_RSWITCH3_PORT_CONFIG_INIT) \
 	}; \
 \
 	static const struct eth_rswitch3_config eth_rswitch3_config_##n = { \
@@ -81,7 +86,7 @@ static int eth_rswitch3_device_init(const struct device *dev)
 		.ports_count = ARRAY_SIZE(eth_rswitch3_port_configs_##n) \
 	}; \
 \
-	DT_INST_FOREACH_CHILD(n, ETH_RSWITCH3_PORT_DEVICE_INIT); \
+	DT_FOREACH_CHILD(DT_INST_CHILD(n, ports), ETH_RSWITCH3_PORT_DEVICE_INIT); \
 \
 	DEVICE_DT_INST_DEFINE(n, eth_rswitch3_device_init, NULL,					\
 		NULL, &eth_rswitch3_config_##n,				\
