@@ -61,23 +61,39 @@ static int eth_rswitch3_device_init(const struct device *dev)
 	return 0;
 }
 
-#define ETH_RSWITCH3_PORT_DEVICE_INIT(n) \
-	static const struct eth_rswitch3_port_config eth_rswitch3_port_config_##n = { \
-		.id = DT_PROP(n, id), \
-		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(n) \
+#define ETH_RSWITCH3_PORT_DEVICE_INIT(n, port_id) \
+	static const struct eth_rswitch3_port_config eth_rswitch3_port_config_##port_id = { \
+		.id = port_id, \
+		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(n) /*DT_PROP(DT_INST_CHILD(n, port##port_id), local_mac_address)*/ \
 	}; \
 \
-	ETH_NET_DEVICE_INIT_INSTANCE(rswitch3_port_##n, "eth" STRINGIFY(DT_PROP(n, id)), n, \
+	ETH_NET_DEVICE_INIT_INSTANCE(rswitch3_port_##port_id, "eth" STRINGIFY(port_id), port_id, \
 		NULL, NULL, \
 		NULL, /* TODO data */ \
-		&eth_rswitch3_port_config_##n, \
+		&eth_rswitch3_port_config_##port_id, \
 		CONFIG_ETH_INIT_PRIORITY, &eth_rswitch3_ethernet_api, NET_ETH_MTU);
+
+#define ETH_RSWITCH3_DETECT_PORT(n, port_id) \
+	COND_CODE_1(DT_NODE_EXISTS(DT_INST_CHILD(n, port##port_id)), \
+		(ETH_RSWITCH3_PORT_DEVICE_INIT(DT_INST_CHILD(n, port##port_id), port_id)), ())
+
+		//(ETH_RSWITCH3_PORT_DEVICE_INIT(DT_INST_CHILD(n, port##port_id))), ())
+
 
 #define ETH_RSWITCH3_INIT(n) \
 	static const struct eth_rswitch3_config eth_rswitch3_config_##n = { \
 	}; \
 \
-	DT_FOREACH_CHILD(DT_INST_CHILD(n, ports), ETH_RSWITCH3_PORT_DEVICE_INIT); \
+	/*DT_FOREACH_CHILD(DT_INST_CHILD(n, ports), ETH_RSWITCH3_PORT_DEVICE_INIT);*/ \
+\
+	ETH_RSWITCH3_DETECT_PORT(n, 0); \
+	ETH_RSWITCH3_DETECT_PORT(n, 1); \
+	ETH_RSWITCH3_DETECT_PORT(n, 2); \
+	ETH_RSWITCH3_DETECT_PORT(n, 3); \
+	ETH_RSWITCH3_DETECT_PORT(n, 4); \
+	ETH_RSWITCH3_DETECT_PORT(n, 5); \
+	ETH_RSWITCH3_DETECT_PORT(n, 6); \
+	ETH_RSWITCH3_DETECT_PORT(n, 7); \
 \
 	DEVICE_DT_INST_DEFINE(n, eth_rswitch3_device_init, NULL,					\
 		NULL, &eth_rswitch3_config_##n,				\

@@ -15,22 +15,27 @@ properties:
     type: array
 
 child-binding:
-  child-binding:
+  #child-binding:
 
-    description: Port properties
+  description: Port properties
 
-    properties:
-      # TODO
-      id:
-        type: int
+  include: ethernet-mac-address.yaml
 
-      phy-handle:
-        type: phandle
-        description: Specify a reference to a node representing a PHY device.
 
-      local-mac-address:
-        type: uint8-array
-        description: Specify the MAC address that is assigned to the Ethernet controller port.
+  properties:
+    # TODO
+    #id:
+    #  type: int
+
+    phy-handle:
+      type: phandle
+      description: Specify a reference to a node representing a PHY device.
+
+    lsocal-mac-address:
+      type: uint8-array
+      description: Specify the MAC address that is assigned to the Ethernet controller port.
+
+   # zephyr,random-mac-address;
 
     # TODO
   #interrupts:
