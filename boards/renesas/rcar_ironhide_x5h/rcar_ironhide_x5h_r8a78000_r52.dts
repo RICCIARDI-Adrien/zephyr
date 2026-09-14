@@ -211,6 +211,13 @@
 			//id = <0>;
 			//phy-handle = <&eth_phy_0>;
 			local-mac-address = [B0 0B C1 A0 BE EF];
+
+			/*phy {
+				compatible = "ti,dp83867";
+				status = "okay";
+				reg = <0>;
+				ti,interface-type = "rgmii";
+			};*/
 		};
 
 		port3 {
