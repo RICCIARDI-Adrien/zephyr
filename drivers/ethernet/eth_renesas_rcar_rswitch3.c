@@ -18,6 +18,7 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch3, CONFIG_ETHERNET_LOG_LEVEL);
 struct eth_rswitch3_port_config {
 	int id;
 	struct net_eth_mac_config mac_config;
+	clock_control_subsys_t tsn_clk;
 };
 
 struct eth_rswitch3_config {
@@ -27,7 +28,7 @@ struct eth_rswitch3_config {
 	clock_control_subsys_t rsw3_clk;
 	clock_control_subsys_t rsw3_tsn_global_clk;
 	clock_control_subsys_t rsw3_aes_clk;
-	clock_control_subsys_t rsw3_tsn_clks[ETH_RSWITCH3_TSN_COUNT];
+	//clock_control_subsys_t rsw3_tsn_clks[ETH_RSWITCH3_TSN_COUNT];
 	clock_control_subsys_t rsw3_mfwd_clk;
 };
 
@@ -61,10 +62,11 @@ static int eth_rswitch3_device_init(const struct device *dev)
 	return 0;
 }
 
-#define ETH_RSWITCH3_PORT_DEVICE_INIT(n, port_id) \
+#define ETH_RSWITCH3_PORT_DEVICE_INIT(inst, n, port_id, clock) \
 	static const struct eth_rswitch3_port_config eth_rswitch3_port_config_##port_id = { \
 		.id = port_id, \
-		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(n) /*DT_PROP(DT_INST_CHILD(n, port##port_id), local_mac_address)*/ \
+		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(n), /*DT_PROP(DT_INST_CHILD(n, port##port_id), local_mac_address)*/ \
+		.tsn_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, clock, name) \
 	}; \
 \
 	ETH_NET_DEVICE_INIT_INSTANCE(rswitch3_port_##port_id, "eth" STRINGIFY(port_id), port_id, \
@@ -73,30 +75,31 @@ static int eth_rswitch3_device_init(const struct device *dev)
 		&eth_rswitch3_port_config_##port_id, \
 		CONFIG_ETH_INIT_PRIORITY, &eth_rswitch3_ethernet_api, NET_ETH_MTU);
 
-#define ETH_RSWITCH3_DETECT_PORT(n, port_id) \
-	COND_CODE_1(DT_NODE_EXISTS(DT_INST_CHILD(n, port##port_id)), \
-		(ETH_RSWITCH3_PORT_DEVICE_INIT(DT_INST_CHILD(n, port##port_id), port_id)), ())
+#define ETH_RSWITCH3_DETECT_PORT(inst, port_id, clock) \
+	COND_CODE_1(DT_NODE_EXISTS(DT_INST_CHILD(inst, port##port_id)), \
+		(ETH_RSWITCH3_PORT_DEVICE_INIT(inst, DT_INST_CHILD(inst, port##port_id), port_id, clock)), \
+		())
 
 		//(ETH_RSWITCH3_PORT_DEVICE_INIT(DT_INST_CHILD(n, port##port_id))), ())
 
 
-#define ETH_RSWITCH3_INIT(n) \
-	static const struct eth_rswitch3_config eth_rswitch3_config_##n = { \
+#define ETH_RSWITCH3_INIT(inst) \
+	static const struct eth_rswitch3_config eth_rswitch3_config_##inst = { \
 	}; \
 \
 	/*DT_FOREACH_CHILD(DT_INST_CHILD(n, ports), ETH_RSWITCH3_PORT_DEVICE_INIT);*/ \
 \
-	ETH_RSWITCH3_DETECT_PORT(n, 0); \
-	ETH_RSWITCH3_DETECT_PORT(n, 1); \
-	ETH_RSWITCH3_DETECT_PORT(n, 2); \
-	ETH_RSWITCH3_DETECT_PORT(n, 3); \
-	ETH_RSWITCH3_DETECT_PORT(n, 4); \
-	ETH_RSWITCH3_DETECT_PORT(n, 5); \
-	ETH_RSWITCH3_DETECT_PORT(n, 6); \
-	ETH_RSWITCH3_DETECT_PORT(n, 7); \
+	ETH_RSWITCH3_DETECT_PORT(inst, 0, rsw3tsntes0); \
+	ETH_RSWITCH3_DETECT_PORT(inst, 1, rsw3tsntes1); \
+	ETH_RSWITCH3_DETECT_PORT(inst, 2, rsw3tsntes2); \
+	ETH_RSWITCH3_DETECT_PORT(inst, 3, rsw3tsntes3); \
+	ETH_RSWITCH3_DETECT_PORT(inst, 4, rsw3tsntes4); \
+	ETH_RSWITCH3_DETECT_PORT(inst, 5, rsw3tsntes5); \
+	ETH_RSWITCH3_DETECT_PORT(inst, 6, rsw3tsntes6); \
+	ETH_RSWITCH3_DETECT_PORT(inst, 7, rsw3tsntes7); \
 \
-	DEVICE_DT_INST_DEFINE(n, eth_rswitch3_device_init, NULL,					\
-		NULL, &eth_rswitch3_config_##n,				\
+	DEVICE_DT_INST_DEFINE(inst, eth_rswitch3_device_init, NULL,					\
+		NULL, &eth_rswitch3_config_##inst,				\
 		POST_KERNEL, CONFIG_ETH_INIT_PRIORITY, NULL);
 
 
