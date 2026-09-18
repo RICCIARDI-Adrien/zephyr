@@ -1,9 +1,9 @@
 # Copyright (c) 2026 BayLibre, SAS
 # SPDX-License-Identifier: Apache-2.0
 
-description: Renesas R-Car R-Switch 3 Ethernet
+description: Renesas R-Car R-Switch Ethernet
 
-compatible: "renesas,rcar-rswitch3"
+compatible: "renesas,rcar-rswitch"
 
 include: ethernet-controller.yaml
 

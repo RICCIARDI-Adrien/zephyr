@@ -8,38 +8,40 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/ethernet.h>
 
-LOG_MODULE_REGISTER(eth_rcar_rswitch3, CONFIG_ETHERNET_LOG_LEVEL);
+LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 
-#define DT_DRV_COMPAT renesas_rcar_rswitch3
+#define DT_DRV_COMPAT renesas_rcar_rswitch
 
 /* The total amount of TSN IP blocks. */
-#define ETH_RSWITCH3_TSN_COUNT 8
+#define ETH_RSWITCH_TSN_COUNT 8
 
-struct eth_rswitch3_config {
-	//const struct eth_rswitch3_port_config *port_configs;
+#define RSWITCH
+
+struct eth_rswitch_config {
+	//const struct eth_rswitch_port_config *port_configs;
 	//size_t ports_count;
 	const struct device *clock_dev;
 	clock_control_subsys_t rsw3_clk;
 	clock_control_subsys_t rsw3_tsn_global_clk;
 	clock_control_subsys_t rsw3_aes_clk;
-	//clock_control_subsys_t rsw3_tsn_clks[ETH_RSWITCH3_TSN_COUNT];
+	//clock_control_subsys_t rsw3_tsn_clks[ETH_RSWITCH_TSN_COUNT];
 	clock_control_subsys_t rsw3_mfwd_clk;
 };
 
-struct eth_rswitch3_port_config {
+struct eth_rswitch_port_config {
 	int id;
 	struct net_eth_mac_config mac_config;
 	clock_control_subsys_t tsn_clk;
 	const struct device *global_dev;
 };
 
-//#define RSWITCH3_PORT_INIT
+//#define rswitch_port_INIT
 
-static void eth_rswitch3_iface_init(struct net_if *iface)
+static void eth_rswitch_iface_init(struct net_if *iface)
 {
 	const struct device *dev = net_if_get_device(iface);
-	const struct eth_rswitch3_port_config *port_config = dev->config;
-	const struct eth_rswitch3_config *global_config = port_config->global_dev->config;
+	const struct eth_rswitch_port_config *port_config = dev->config;
+	const struct eth_rswitch_config *global_config = port_config->global_dev->config;
 
 	// TODO
 	LOG_WRN("INIT IFACE nom=%s, id=%d", dev->name, port_config->id);
@@ -58,13 +60,13 @@ static void eth_rswitch3_iface_init(struct net_if *iface)
 	LOG_WRN("INIT IFACE nom=%s OK", dev->name);
 }
 
-static const struct ethernet_api eth_rswitch3_ethernet_api = {
-	.iface_api.init = eth_rswitch3_iface_init,
+static const struct ethernet_api eth_rswitch_ethernet_api = {
+	.iface_api.init = eth_rswitch_iface_init,
 };
 
-static int eth_rswitch3_device_init(const struct device *dev)
+static int eth_rswitch_device_init(const struct device *dev)
 {
-	const struct eth_rswitch3_config *config = dev->config;
+	const struct eth_rswitch_config *config = dev->config;
 	int ret;
 
 	LOG_ERR("CACA START...");
@@ -105,30 +107,30 @@ static int eth_rswitch3_device_init(const struct device *dev)
 	return 0;
 }
 
-#define ETH_RSWITCH3_PORT_DEVICE_INIT(inst, n, port_id, clock) \
-	static const struct eth_rswitch3_port_config eth_rswitch3_port_config_##port_id = { \
+#define ETH_RSWITCH_PORT_DEVICE_INIT(inst, n, port_id, clock) \
+	static const struct eth_rswitch_port_config eth_rswitch_port_config_##port_id = { \
 		.id = port_id, \
 		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(n), /*DT_PROP(DT_INST_CHILD(n, port##port_id), local_mac_address)*/ \
 		.tsn_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, clock, name), \
 		.global_dev = DEVICE_DT_GET(DT_DRV_INST(inst)) \
 	}; \
 \
-	ETH_NET_DEVICE_INIT_INSTANCE(rswitch3_port_##port_id, "eth" STRINGIFY(port_id), port_id, \
+	ETH_NET_DEVICE_INIT_INSTANCE(rswitch_port_##port_id, "eth" STRINGIFY(port_id), port_id, \
 		NULL, NULL, \
 		NULL, /* TODO data */ \
-		&eth_rswitch3_port_config_##port_id, \
-		CONFIG_ETH_INIT_PRIORITY, &eth_rswitch3_ethernet_api, NET_ETH_MTU);
+		&eth_rswitch_port_config_##port_id, \
+		CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
 
-#define ETH_RSWITCH3_DETECT_PORT(inst, port_id, clock) \
+#define ETH_RSWITCH_DETECT_PORT(inst, port_id, clock) \
 	COND_CODE_1(DT_NODE_EXISTS(DT_INST_CHILD(inst, port##port_id)), \
-		(ETH_RSWITCH3_PORT_DEVICE_INIT(inst, DT_INST_CHILD(inst, port##port_id), port_id, clock)), \
+		(ETH_RSWITCH_PORT_DEVICE_INIT(inst, DT_INST_CHILD(inst, port##port_id), port_id, clock)), \
 		())
 
-		//(ETH_RSWITCH3_PORT_DEVICE_INIT(DT_INST_CHILD(n, port##port_id))), ())
+		//(ETH_RSWITCH_PORT_DEVICE_INIT(DT_INST_CHILD(n, port##port_id))), ())
 
 
-#define ETH_RSWITCH3_INIT(inst) \
-	static const struct eth_rswitch3_config eth_rswitch3_config_##inst = { \
+#define ETH_RSWITCH_INIT(inst) \
+	static const struct eth_rswitch_config eth_rswitch_config_##inst = { \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)), \
 		.rsw3_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3, name), \
 		.rsw3_tsn_global_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3tsn, name), \
@@ -136,29 +138,29 @@ static int eth_rswitch3_device_init(const struct device *dev)
 		.rsw3_mfwd_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3mfwd, name) \
 	}; \
 \
-	/*DT_FOREACH_CHILD(DT_INST_CHILD(n, ports), ETH_RSWITCH3_PORT_DEVICE_INIT);*/ \
+	/*DT_FOREACH_CHILD(DT_INST_CHILD(n, ports), ETH_RSWITCH_PORT_DEVICE_INIT);*/ \
 \
-	ETH_RSWITCH3_DETECT_PORT(inst, 0, rsw3tsntes0); \
-	ETH_RSWITCH3_DETECT_PORT(inst, 1, rsw3tsntes1); \
-	ETH_RSWITCH3_DETECT_PORT(inst, 2, rsw3tsntes2); \
-	ETH_RSWITCH3_DETECT_PORT(inst, 3, rsw3tsntes3); \
-	ETH_RSWITCH3_DETECT_PORT(inst, 4, rsw3tsntes4); \
-	ETH_RSWITCH3_DETECT_PORT(inst, 5, rsw3tsntes5); \
-	ETH_RSWITCH3_DETECT_PORT(inst, 6, rsw3tsntes6); \
-	ETH_RSWITCH3_DETECT_PORT(inst, 7, rsw3tsntes7); \
+	ETH_RSWITCH_DETECT_PORT(inst, 0, rsw3tsntes0); \
+	ETH_RSWITCH_DETECT_PORT(inst, 1, rsw3tsntes1); \
+	ETH_RSWITCH_DETECT_PORT(inst, 2, rsw3tsntes2); \
+	ETH_RSWITCH_DETECT_PORT(inst, 3, rsw3tsntes3); \
+	ETH_RSWITCH_DETECT_PORT(inst, 4, rsw3tsntes4); \
+	ETH_RSWITCH_DETECT_PORT(inst, 5, rsw3tsntes5); \
+	ETH_RSWITCH_DETECT_PORT(inst, 6, rsw3tsntes6); \
+	ETH_RSWITCH_DETECT_PORT(inst, 7, rsw3tsntes7); \
 \
-	DEVICE_DT_INST_DEFINE(inst, eth_rswitch3_device_init, NULL,					\
-		NULL, &eth_rswitch3_config_##inst,				\
+	DEVICE_DT_INST_DEFINE(inst, eth_rswitch_device_init, NULL,					\
+		NULL, &eth_rswitch_config_##inst,				\
 		POST_KERNEL, CONFIG_ETH_INIT_PRIORITY, NULL);
 
 
 	/*ETH_NET_DEVICE_INIT_INSTANCE(n,  \*/
-	/*ETH_NET_DEVICE_DT_INST_DEFINE(n, eth_rswitch3_init, NULL, \
+	/*ETH_NET_DEVICE_DT_INST_DEFINE(n, ETH_RSWITCH_INIT, NULL, \
 		NULL*/ /* DATA TODO *//*, \
-		eth_rswitch3_config_##n, \
+		eth_rswitch_config_##n, \
 		CONFIG_ETH_INIT_PRIORITY, \
-		&eth_rswitch3_ethernet_api, \
+		&eth_rswitch_ethernet_api, \
 		NET_ETH_MTU);*/
 
 
-DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH3_INIT);
+DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH_INIT);
