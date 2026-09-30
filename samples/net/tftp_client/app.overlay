@@ -1,0 +1,19 @@
+&hscif1 {
+	status = "disabled";
+};
+
+&hscif2 {
+	pinctrl-0 = <&hscif2_a_data_tx_default
+	             &hscif2_a_data_rx_default>;
+	pinctrl-names = "default";
+	current-speed = <921600>;
+	status = "okay";
+};
+
+/ {
+	chosen {
+		/* /delete-node/  */
+		zephyr,console = &hscif2;
+		zephyr,shell-uart = &hscif2;
+	};
+};
