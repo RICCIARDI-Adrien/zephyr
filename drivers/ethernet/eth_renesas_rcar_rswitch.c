@@ -17,8 +17,6 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 /* The total amount of TSN IP blocks. */
 //#define ETH_RSWITCH_TSN_COUNT 8
 
-#define RSWITCH_OFFSET_COMA 0x1C000 // 0xc000
-
 /* R-Switch IP Version register */
 #define RSWITCH_COMA_RIPV 0x0000
 
@@ -37,6 +35,7 @@ struct eth_rswitch_config {
 	//const struct eth_rswitch_port_config *port_configs;
 	//size_t ports_count;
 	uint32_t reg;
+	uint32_t coma_offset;
 	const struct device *clock_dev;
 	clock_control_subsys_t rsw3_clk;
 	clock_control_subsys_t rsw3_tsn_global_clk;
@@ -88,10 +87,10 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 	LOG_WRN("INIT IFACE nom=%s, id=%d", dev->name, port_config->id);
 	LOG_HEXDUMP_WRN(port_config->mac_config.addr, port_config->mac_config.addr_len, "MAC=");
 
-	/*if (clock_control_on(global_config->clock_dev, port_config->tsn_clk) != 0) {
+	if (clock_control_on(global_config->clock_dev, port_config->tsn_clk) != 0) {
 		LOG_ERR("Failed to turn the tsn%d clock on.", port_config->id);
 		__ASSERT_NO_MSG();
-	}*/
+	}
 
 	net_if_set_link_addr(iface, port_config->mac_config.addr, port_config->mac_config.addr_len,
 		NET_LINK_ETHERNET);
@@ -110,70 +109,12 @@ static int eth_rswitch_device_init(const struct device *dev)
 	const struct eth_rswitch_config *config = dev->config;
 	int ret;
 
-	LOG_ERR("CACA START...");
-
 	if (!device_is_ready(config->clock_dev)) {
 		LOG_ERR("The clock device is not ready.");
 		return -ENODEV;
 	}
 
-#if 0
-	// HACK to enable the HSCN power domain
-	{
-		const uint32_t MDLC_BASE_ADDR = 0xC9C90000;
-		const uint32_t REG_MDLC13MPDG1 = MDLC_BASE_ADDR + 0x200 + (1 * 4);
-		const uint32_t REG_MDLC13MPDGS1 = MDLC_BASE_ADDR + 0x300 + (1 * 4);
-		const uint32_t REG_MDLC13MSRES03 = MDLC_BASE_ADDR + 0x900 + (3 * 4);
-		const uint32_t REG_MDLC13MSRESS03 = MDLC_BASE_ADDR + 0x960 + (3 * 4);
-		const uint32_t REG_MDLC13PKCPROT1 = MDLC_BASE_ADDR + 0xCF4;
-		const uint32_t MAGIC_NUMBER = 0xA5A5A501;
-		uint32_t val;
-
-		// 1
-		sys_write32(MAGIC_NUMBER, REG_MDLC13PKCPROT1);
-
-		// 2
-		while (sys_read32(REG_MDLC13PKCPROT1) != 0x00000001);
-
-		// 3
-		// Check if the power gating module is ready
-		while (sys_read32(REG_MDLC13MPDGS1) != sys_read32(REG_MDLC13MPDG1));
-		// Trigger the reset state
-		sys_write32(0x00000001, REG_MDLC13MPDG1);
-		// Wait for completion
-		while (sys_read32(REG_MDLC13MPDGS1) != sys_read32(REG_MDLC13MPDG1));
-		// Trigger the run state
-		sys_write32(0x00000003, REG_MDLC13MPDG1);
-		// Wait for completion
-		while (sys_read32(REG_MDLC13MPDGS1) != sys_read32(REG_MDLC13MPDG1));
-
-		LOG_WRN("REG_MDLC13MPDGS1 0x%08X REG_MDLC13MPDG1 0x%08X", sys_read32(REG_MDLC13MPDGS1), sys_read32(REG_MDLC13MPDG1));
-
-		// TODO
-
-		// 4
-		val = sys_read32(REG_MDLC13MSRESS03);
-		LOG_WRN("REG_MDLC13MSRESS03 avant 0x%08X", val);
-
-		// 5 => standby
-		val &= 0x0000FFFF;
-		sys_write32(val, REG_MDLC13MSRES03);
-
-		// 6
-		//while ((sys_read32(REG_MDLC13MSRESS03) & 0xFFFF0000) != 0);
-
-		/*val |= 0xFFFF0000; // Enable all RSW power domains
-		sys_write32(val, REG_MDLC13MSRES03);
-
-		// 6
-		while ((sys_read32(REG_MDLC13MSRESS03) & 0xFFFF0000) != 0xFFFF0000);
-		//val = sys_read32(REG_MDLC13MSRESS03);
-		LOG_WRN("REG_MDLC13MSRESS03 apres 0x%08X", val);*/
-		//__ASSERT_NO_MSG((val & 0xFFFF0000) == 0xFFFF0000);
-	}
-#endif
-
-	/*ret = clock_control_on(config->clock_dev, config->rsw3_clk);
+	ret = clock_control_on(config->clock_dev, config->rsw3_clk);
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the rsw3 clock on.");
 		return ret;
@@ -195,13 +136,13 @@ static int eth_rswitch_device_init(const struct device *dev)
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the rsw3_mfwd clock on.");
 		return ret;
-	}*/
+	}
 
 	DEVICE_MMIO_MAP(dev, K_MEM_CACHE_NONE | K_MEM_DIRECT_MAP);
 
-	LOG_WRN("on pd %d", pm_device_on_power_domain(dev));
+	/*LOG_WRN("on pd %d", pm_device_on_power_domain(dev));
 
-	/*pm_device_init_off(dev);
+	pm_device_init_off(dev);
 	ret = pm_device_runtime_enable(dev);
 		if (ret) {
 			LOG_ERR("Failed to enable device runtime PM");
@@ -214,23 +155,14 @@ static int eth_rswitch_device_init(const struct device *dev)
 			return ret;
 		}*/
 
+	/* Reset the controller (must be de-asserted quickly to avoid a power consumption peak) */
+	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RRC, RSWITCH_COMA_RRC_RR);
+	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RRC, 0);
 
-#if 0
-	/* Reset the controller */
-	eth_rswitch_write(dev, RSWITCH_OFFSET_COMA + RSWITCH_COMA_RRC, RSWITCH_COMA_RRC_RR);
-	eth_rswitch_write(dev, RSWITCH_OFFSET_COMA + RSWITCH_COMA_RRC, 0);
+	/* Internally enable the controller clocks (each port will enable its own clock later) */
+	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RCEC, RSWITCH_COMA_RCEC_RCE);
 
-	/* Internally enable the controller clocks */
-	eth_rswitch_write(dev, RSWITCH_OFFSET_COMA + RSWITCH_COMA_RCEC, RSWITCH_COMA_RCEC_RCE
-		/*| 0x7FFF*/
-	); // TODO agent clock
-#endif
-
-	LOG_DBG("R-Switch controller IPs version: 0x%08X.", eth_rswitch_read(dev, RSWITCH_OFFSET_COMA + RSWITCH_COMA_RIPV));
-
-	LOG_ERR("CACA OK !");
-
-	// TODO log dbg avec version IP (si le registre existe)
+	LOG_DBG("R-Switch controller IPs version: 0x%08X.", eth_rswitch_read(dev, config->coma_offset + RSWITCH_COMA_RIPV));
 
 	return 0;
 }
@@ -260,7 +192,8 @@ static int eth_rswitch_device_init(const struct device *dev)
 #define ETH_RSWITCH_INIT(inst) \
 	static const struct eth_rswitch_config eth_rswitch_config_##inst = { \
 		DEVICE_MMIO_ROM_INIT(DT_DRV_INST(inst)), \
-		.reg = DT_INST_REG_ADDR(inst), \
+		.reg = DT_INST_REG_ADDR(inst), /* TODO utile ? */ \
+		.coma_offset = DT_INST_PROP(inst, coma_reg_offset), \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)), \
 		.rsw3_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3, name), \
 		.rsw3_tsn_global_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3tsn, name), \

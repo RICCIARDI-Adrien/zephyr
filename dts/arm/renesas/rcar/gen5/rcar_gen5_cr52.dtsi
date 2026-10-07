@@ -446,11 +446,12 @@
 			};
 		};
 
-
 		rswitch3: ethernet@c9b80000 {
 			compatible = "renesas,rcar-rswitch";
 			reg = <0xc9b80000 0x40000>; // TODO inclure range non secure ?
+			coma-reg-offset = <0x1C000>;
 			status = "disabled";
+			// TODO autres offsets
 		};
 	};
 };

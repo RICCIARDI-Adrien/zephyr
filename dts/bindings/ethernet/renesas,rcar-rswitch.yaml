@@ -11,6 +11,13 @@ properties:
   reg:
     required: true
 
+  coma-reg-offset:
+    type: int
+    required: true
+    description: |
+      The COMA registers offset from the beginning of the R-Switch 3 secure range.
+      Also called CARO offset in the TOP documentation.
+
   ports:
     type: array
 
