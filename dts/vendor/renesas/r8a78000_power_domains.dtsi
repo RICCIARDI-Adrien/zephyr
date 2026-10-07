@@ -41,5 +41,20 @@
 			power-domains = <&vio4_pd>;
 			zephyr,pm-device-runtime-auto;
 		};
+
+		/*hscn_pd: high-speed-communication-north-pd@d {
+			compatible = "arm,scmi-power-domain";
+			reg = <0xd>;
+			#power-domain-cells = <0>;
+			zephyr,pm-device-runtime-auto;
+		};*/
+
+		/*ethernet_rswitch3_pd: ethernet-rswitch3-pd@f {
+			compatible = "arm,scmi-power-domain";
+			reg = <R8A78000_PD_RSW>;
+			#power-domain-cells = <0>;
+			//power-domains = <&hscn_pd>;
+			zephyr,pm-device-runtime-auto;
+		};*/
 	};
 };
