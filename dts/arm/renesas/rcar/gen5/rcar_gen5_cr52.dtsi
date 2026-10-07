@@ -447,9 +447,9 @@
 		};
 
 
-		rswitch3: ethernet@c9bc0000 {
+		rswitch3: ethernet@c9b80000 {
 			compatible = "renesas,rcar-rswitch";
-			reg = <0xc9bc0000 0x40000>;
+			reg = <0xc9b80000 0x40000>; // TODO inclure range non secure ?
 			status = "disabled";
 		};
 	};

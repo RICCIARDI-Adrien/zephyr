@@ -322,7 +322,7 @@
 			};
 		};
 
-		rswitch3: ethernet@c9bc0000 {
+		rswitch3: ethernet@c9b80000 {
 			//interrupts = TODO
 			clocks = <&scmi_clk R8A78000_CLK_RSW3>,
 				 <&scmi_clk R8A78000_CLK_RSW3TSN>,
@@ -336,11 +336,11 @@
 				 <&scmi_clk R8A78000_CLK_RSW3TSNTES6>,
 				 <&scmi_clk R8A78000_CLK_RSW3TSNTES7>,
 				 <&scmi_clk R8A78000_CLK_RSW3MFWD>;
-			// TODO utile ?
 			clock-names = "rsw3", "rsw3tsn", "rsw3aes",
 				      "rsw3tsntes0", "rsw3tsntes1", "rsw3tsntes2",
 				      "rsw3tsntes3", "rsw3tsntes4", "rsw3tsntes5",
 				      "rsw3tsntes6", "rsw3tsntes7", "rsw3mfwd";
+			//power-domains = <&ethernet_rswitch3_pd>;
 
 				      // TEST
 			/*gmac0: ethernet {
