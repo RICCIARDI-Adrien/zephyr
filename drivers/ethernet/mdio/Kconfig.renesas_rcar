@@ -1,0 +1,10 @@
+# Copyright 2026 BayLibre, SAS
+# SPDX-License-Identifier: Apache-2.0
+
+config MDIO_RENESAS_RCAR_RSWITCH
+	bool "Renesas R-Car R-Switch MDIO driver"
+	default y
+	depends on DT_HAS_RENESAS_RCAR_RSWITCH_MDIO_ENABLED
+	depends on ETH_RENESAS_RCAR_RSWITCH
+	help
+	  Enable the R-Car R-Switch MDIO driver.
