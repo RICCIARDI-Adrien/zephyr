@@ -243,12 +243,12 @@
 	//};
 
 	mdio {
-		//compatible = "atmel,sam-mdio"; // TEST
-		/*#address-cells = <1>;
+		compatible = "renesas,rcar-rswitch-mdio";
+		#address-cells = <1>;
 		#size-cells = <0>;
 		status = "okay";
 
-		eth_phy_0: ethernet-phy@1 {
+		/*eth_phy_0: ethernet-phy@1 {
 			reg = <0x1>;
 			compatible = "ti,dp83867"; // TEST
 			ti,interface-type = "rgmii";
