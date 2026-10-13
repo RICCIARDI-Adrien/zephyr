@@ -30,6 +30,9 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 /* R-Switch Clock Enable Configuration register bits */
 #define RSWITCH_COMA_RCEC_RCE BIT(16)
 
+#define RSWITCH_TSNA_AREA_SIZE 0x1000
+#define RSWITCH_RMAC_AREA_SIZE 0x1000
+
 struct eth_rswitch_config {
 	DEVICE_MMIO_ROM; /* Must be first */
 	//const struct eth_rswitch_port_config *port_configs;
@@ -50,6 +53,8 @@ struct eth_rswitch_data {
 
 struct eth_rswitch_port_config {
 	int id;
+	uint32_t tsna_offset; /* Specific to this port */
+	uint32_t rmac_offset; /* Specific to this port */
 	struct net_eth_mac_config mac_config;
 	clock_control_subsys_t tsn_clk;
 	const struct device *global_dev;
@@ -84,7 +89,7 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 	const struct eth_rswitch_config *global_config = port_config->global_dev->config;
 
 	// TODO
-	LOG_WRN("INIT IFACE nom=%s, id=%d", dev->name, port_config->id);
+	LOG_WRN("INIT IFACE nom=%s, id=%d, tsnaoffs=0x%08X, rmacoffs=0x%08X", dev->name, port_config->id, port_config->tsna_offset, port_config->rmac_offset);
 	LOG_HEXDUMP_WRN(port_config->mac_config.addr, port_config->mac_config.addr_len, "MAC=");
 
 	if (clock_control_on(global_config->clock_dev, port_config->tsn_clk) != 0) {
@@ -170,6 +175,11 @@ static int eth_rswitch_device_init(const struct device *dev)
 #define ETH_RSWITCH_PORT_DEVICE_INIT(inst, n, port_id, clock) \
 	static const struct eth_rswitch_port_config eth_rswitch_port_config_##port_id = { \
 		.id = port_id, \
+		.tsna_offset = DT_INST_PROP(inst, tsna_reg_base_offset) \
+			+ port_id * (RSWITCH_TSNA_AREA_SIZE + RSWITCH_RMAC_AREA_SIZE), \
+		.rmac_offset = DT_INST_PROP(inst, tsna_reg_base_offset) \
+			+ port_id * (RSWITCH_TSNA_AREA_SIZE + RSWITCH_RMAC_AREA_SIZE) \
+			+ RSWITCH_TSNA_AREA_SIZE, \
 		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(n), /*DT_PROP(DT_INST_CHILD(n, port##port_id), local_mac_address)*/ \
 		.tsn_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, clock, name), \
 		.global_dev = DEVICE_DT_GET(DT_DRV_INST(inst)) \

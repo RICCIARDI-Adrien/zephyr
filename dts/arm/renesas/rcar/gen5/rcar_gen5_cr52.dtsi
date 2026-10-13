@@ -450,6 +450,7 @@
 			compatible = "renesas,rcar-rswitch";
 			reg = <0xc9b80000 0x40000>; // TODO inclure range non secure ?
 			coma-reg-offset = <0x1C000>;
+			tsna-reg-base-offset = <0x1D000>;
 			status = "disabled";
 			// TODO autres offsets
 		};

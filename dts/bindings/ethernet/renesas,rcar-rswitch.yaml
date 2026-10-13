@@ -18,6 +18,12 @@ properties:
       The COMA registers offset from the beginning of the R-Switch 3 secure range.
       Also called CARO offset in the TOP documentation.
 
+  tsna-reg-base-offset:
+    type: int
+    required: true
+    description: |
+      TODO dire specifique a chaque port
+
   ports:
     type: array
 
