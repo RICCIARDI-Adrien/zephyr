@@ -7,8 +7,9 @@
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/ethernet.h>
-#include <zephyr/pm/device.h>
-#include <zephyr/pm/device_runtime.h>
+//#include <zephyr/pm/device.h>
+//#include <zephyr/pm/device_runtime.h>
+#include "eth_renesas_rcar_rswitch_priv.h"
 
 LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 
@@ -81,6 +82,12 @@ static inline void eth_rswitch_write(const struct device *dev, uint32_t offset, 
 }
 
 //#define rswitch_port_INIT
+
+int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t port_address, uint8_t reg_address,
+			      uint16_t *data)
+{
+
+}
 
 static void eth_rswitch_iface_init(struct net_if *iface)
 {
