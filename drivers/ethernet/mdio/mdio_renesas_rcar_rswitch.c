@@ -16,19 +16,19 @@ struct mdio_rswitch_config {
 	const struct device *global_dev;
 };
 
-static int mdio_rswitch_c22_read(const struct device *dev, uint8_t port_address,
-				 uint8_t reg_address, uint16_t *data)
+static int mdio_rswitch_c22_read(const struct device *dev, uint8_t prtad, uint8_t devad,
+				 uint16_t *data)
 {
 	// TEST
-	LOG_ERR("mdio_rswitch_c22_read port_address=%d, reg_address=%d", port_address, reg_address);
+	LOG_ERR("mdio_rswitch_c22_read prtad=%d, devad=%d", prtad, devad);
 
 	const struct mdio_rswitch_config *config = dev->config;
 
-	return eth_rswitch_mdio_c22_read(config->global_dev, port_address, reg_address, data);
+	return eth_rswitch_mdio_c22_read(config->global_dev, prtad, devad, data);
 }
 
-static int mdio_rswitch_c22_write(const struct device *dev, uint8_t port_address,
-				  uint8_t reg_address, uint16_t data)
+static int mdio_rswitch_c22_write(const struct device *dev, uint8_t prtad, uint8_t devad,
+				  uint16_t data)
 {
 	/*const struct mdio_lan865x_config *const cfg = dev->config;
 
@@ -43,6 +43,11 @@ static DEVICE_API(mdio, mdio_rswitch_api) = {
 	/*.read_c45 = mdio_rswitch_c45_read,
 	.write_c45 = mdio_rswitch_c45_write*/
 };
+
+static int mdio_rswitch_init(const struct device *dev)
+{
+
+}
 
 #define MDIO_RSWITCH_INIT(inst) \
 	static struct mdio_rswitch_config mdio_rswitch_config_##inst = { \

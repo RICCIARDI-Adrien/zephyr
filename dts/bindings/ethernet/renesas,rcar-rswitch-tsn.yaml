@@ -1,0 +1,26 @@
+# Copyright (c) 2026 BayLibre, SAS
+# SPDX-License-Identifier: Apache-2.0
+
+description: Renesas R-Car R-Switch Ethernet Time Sensitive Networking End Station
+
+compatible: "renesas,rcar-rswitch-tsn"
+
+include:
+  - ethernet-controller.yaml
+  - ethernet-mac-address.yaml
+
+properties:
+  id:
+    type: int
+    required: true
+    description: |
+      TODO s'inspirer de CAN
+
+  # TODO peut-etre
+  phy-handle:
+    type: phandle
+    description: Specify a reference to a node representing a PHY device.
+
+  local-mac-address:
+    type: uint8-array
+    description: Specify the MAC address that is assigned to the Ethernet controller port.
