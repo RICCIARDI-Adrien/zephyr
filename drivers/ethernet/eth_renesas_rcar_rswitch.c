@@ -13,8 +13,6 @@
 
 LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 
-#define DT_DRV_COMPAT renesas_rcar_rswitch
-
 /* The total amount of TSN IP blocks. */
 //#define ETH_RSWITCH_TSN_COUNT 8
 
@@ -30,6 +28,24 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 #define RSWITCH_COMA_RCEC 0x0008
 /* R-Switch Clock Enable Configuration register bits */
 #define RSWITCH_COMA_RCEC_RCE BIT(16)
+
+/* R-Switch Ethernet Agent Mode Configuration register */
+#define RSWITCH_TSNA_EAMC 0x0000
+#define RSWITCH_TSNA_EAMC_OPC_MASK 0x03
+#define RSWITCH_TSNA_EAMC_OPC_RESET 0
+#define RSWITCH_TSNA_EAMC_OPC_DISABLE 1
+#define RSWITCH_TSNA_EAMC_OPC_CONFIG 2
+#define RSWITCH_TSNA_EAMC_OPC_OPERATION 3
+
+/* R-Switch Ethernet Agent Mode Status. register */
+#define RSWITCH_TSNA_EAMS 0x0004
+#define RSWITCH_TSNA_EAMS_OPS_MASK 0x03
+#define RSWITCH_TSNA_EAMS_OPS_RESET 0
+#define RSWITCH_TSNA_EAMS_OPS_DISABLE 1
+#define RSWITCH_TSNA_EAMS_OPS_CONFIG 2
+#define RSWITCH_TSNA_EAMS_OPS_OPERATION 3
+
+#define RSWITCH_TSN_COUNT 13
 
 #define RSWITCH_TSNA_AREA_SIZE 0x1000
 #define RSWITCH_RMAC_AREA_SIZE 0x1000
@@ -61,6 +77,15 @@ struct eth_rswitch_port_config {
 	const struct device *global_dev;
 };
 
+struct eth_rswitch_tsn_config {
+	int id;
+	uint32_t tsna_offset; /* Specific to this port */
+	uint32_t rmac_offset; /* Specific to this port */
+	struct net_eth_mac_config mac_config;
+	clock_control_subsys_t tsnes_clk;
+	const struct device *global_dev;
+};
+
 // TODO pareil pour port ?
 static inline uint32_t eth_rswitch_read(const struct device *dev, uint32_t offset)
 {
@@ -81,33 +106,71 @@ static inline void eth_rswitch_write(const struct device *dev, uint32_t offset, 
 	sys_write32(value, /*config->reg*/DEVICE_MMIO_GET(dev) + offset);
 }
 
-//#define rswitch_port_INIT
+/* Note : this function can sleep, do not use it in interrupt context. */
+static inline int eth_rswitch_busy_wait(mem_addr_t reg, uint32_t bit_mask, uint32_t expected_value)
+{
+	const int TIMEOUT = 2000; /* Don't wait for too long */
+	bool success;
+
+	/*if (expect_one) {
+		success = WAIT_FOR(sys_read32(reg) & bit_mask, TIMEOUT, k_sleep(K_USEC(10)));
+	} else {
+		success = WAIT_FOR(!(sys_read32(reg) & bit_mask), TIMEOUT, k_sleep(K_USEC(10)));
+	}*/
+	if (!WAIT_FOR((sys_read32(reg) & bit_mask) == expected_value, TIMEOUT,
+		k_sleep(K_USEC(10)))) {
+		LOG_DBG("Busy wait timed out. reg=0x%08lX, bit_mask=0x%08X, expected_value=0x%08X",
+			reg, bit_mask, expected_value);
+		return -EAGAIN;
+	}
+
+	return 0;
+}
 
 int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t port_address, uint8_t reg_address,
 			      uint16_t *data)
 {
+	const struct eth_rswitch_port_config *port_config = dev->config;
 
+	// TEST
+	int ret;
+
+	// TEST
+	LOG_WRN("AVANT EAMC=%d, EAMS=%d", eth_rswitch_read(port_config->global_dev, port_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(port_config->global_dev, port_config->tsna_offset + RSWITCH_TSNA_EAMS));
+
+	/*eth_rswitch_write(dev, port_config->tsna_offset + RSWITCH_TSNA_EAMC, RSWITCH_TSNA_EAMC_OPC_CONFIG);
+	LOG_WRN("APRES ecriture EAMC EAMC=%d, EAMS=%d", eth_rswitch_read(dev, port_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(dev, port_config->tsna_offset + RSWITCH_TSNA_EAMS));
+
+	ret = eth_rswitch_busy_wait(DEVICE_MMIO_GET(dev) + port_config->tsna_offset + RSWITCH_TSNA_EAMS,
+		RSWITCH_TSNA_EAMS_OPS_MASK, RSWITCH_TSNA_EAMS_OPS_CONFIG);
+	LOG_WRN("APRES busywait ret=%d", ret);*/
+
+	LOG_ERR("MERDE ALORS");
+
+	return 0;
 }
 
 static void eth_rswitch_iface_init(struct net_if *iface)
 {
 	const struct device *dev = net_if_get_device(iface);
-	const struct eth_rswitch_port_config *port_config = dev->config;
-	const struct eth_rswitch_config *global_config = port_config->global_dev->config;
+	const struct eth_rswitch_tsn_config *tsn_config = dev->config;
+	const struct eth_rswitch_config *global_config = tsn_config->global_dev->config;
 
 	// TODO
-	LOG_WRN("INIT IFACE nom=%s, id=%d, tsnaoffs=0x%08X, rmacoffs=0x%08X", dev->name, port_config->id, port_config->tsna_offset, port_config->rmac_offset);
-	LOG_HEXDUMP_WRN(port_config->mac_config.addr, port_config->mac_config.addr_len, "MAC=");
+	LOG_WRN("INIT IFACE nom=%s, id=%d, tsnaoffs=0x%08X, rmacoffs=0x%08X", dev->name, tsn_config->id, tsn_config->tsna_offset, tsn_config->rmac_offset);
+	LOG_HEXDUMP_WRN(tsn_config->mac_config.addr, tsn_config->mac_config.addr_len, "MAC=");
 
-	if (clock_control_on(global_config->clock_dev, port_config->tsn_clk) != 0) {
-		LOG_ERR("Failed to turn the tsn%d clock on.", port_config->id);
+	if (clock_control_on(global_config->clock_dev, tsn_config->tsnes_clk) != 0) {
+		LOG_ERR("Failed to turn the tsn%d clock on.", tsn_config->id);
 		__ASSERT_NO_MSG();
 	}
 
-	net_if_set_link_addr(iface, port_config->mac_config.addr, port_config->mac_config.addr_len,
+	net_if_set_link_addr(iface, tsn_config->mac_config.addr, tsn_config->mac_config.addr_len,
 		NET_LINK_ETHERNET);
 	ethernet_init(iface);
 	net_if_carrier_off(iface);
+
+	LOG_ERR("COOOONNNN gdev=%p, gconf=%p, gdata=%p", tsn_config->global_dev, tsn_config->global_dev->config, tsn_config->global_dev->data);
 
 	LOG_WRN("INIT IFACE nom=%s OK", dev->name);
 }
@@ -176,9 +239,45 @@ static int eth_rswitch_device_init(const struct device *dev)
 
 	LOG_DBG("R-Switch controller IPs version: 0x%08X.", eth_rswitch_read(dev, config->coma_offset + RSWITCH_COMA_RIPV));
 
+
+
+	LOG_ERR("PUUUUUTE dev=%p, conf=%p, data=%p", dev, dev->config, dev->data);
+
 	return 0;
 }
 
+/*
+ * An external "port" of the R-Switch (to be connected to a PHY).
+ */
+#define DT_DRV_COMPAT renesas_rcar_rswitch_tsn
+
+#define ETH_RSWITCH_TSN_INIT(inst) \
+	static const struct eth_rswitch_tsn_config eth_rswitch_tsn_config_##inst = { \
+		.id = DT_INST_PROP(inst, id), \
+		.tsna_offset = DT_PROP(DT_INST_PARENT(inst), tsna_reg_base_offset) \
+			+ DT_INST_PROP(inst, id) * (RSWITCH_TSNA_AREA_SIZE + RSWITCH_RMAC_AREA_SIZE), \
+		.rmac_offset = DT_PROP(DT_INST_PARENT(inst), tsna_reg_base_offset) \
+			+ DT_INST_PROP(inst, id) * (RSWITCH_TSNA_AREA_SIZE + RSWITCH_RMAC_AREA_SIZE) \
+			+ RSWITCH_TSNA_AREA_SIZE, \
+		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(DT_INST_PROP(inst, id)), \
+		.tsnes_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, name), \
+		.global_dev = DEVICE_DT_GET(DT_INST_PARENT(inst)) \
+	}; \
+\
+	ETH_NET_DEVICE_DT_INST_DEFINE(inst, NULL, NULL, NULL /*data*/, &eth_rswitch_tsn_config_##inst, CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
+
+#if 0
+	ETH_NET_DEVICE_INIT_INSTANCE(rswitch_tsn_##inst, "eth" STRINGIFY(DT_INST_PROP(inst, id)), DT_INST_PROP(inst, id), \
+		NULL, NULL, \
+		NULL, /* TODO data */ \
+		&eth_rswitch_tsn_config_##inst, \
+		CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
+#endif
+
+DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH_TSN_INIT);
+
+// TODO virer si inutile
+#if 0
 #define ETH_RSWITCH_PORT_DEVICE_INIT(inst, n, port_id, clock) \
 	static const struct eth_rswitch_port_config eth_rswitch_port_config_##port_id = { \
 		.id = port_id, \
@@ -198,18 +297,25 @@ static int eth_rswitch_device_init(const struct device *dev)
 		&eth_rswitch_port_config_##port_id, \
 		CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
 
+// TODO virer si inutile
 #define ETH_RSWITCH_DETECT_PORT(inst, port_id, clock) \
 	COND_CODE_1(DT_NODE_EXISTS(DT_INST_CHILD(inst, port##port_id)), \
 		(ETH_RSWITCH_PORT_DEVICE_INIT(inst, DT_INST_CHILD(inst, port##port_id), port_id, clock)), \
 		())
 
 		//(ETH_RSWITCH_PORT_DEVICE_INIT(DT_INST_CHILD(n, port##port_id))), ())
+#endif
 
+/*
+ * The R-Switch global controller.
+ */
+#undef DT_DRV_COMPAT
+#define DT_DRV_COMPAT renesas_rcar_rswitch
 
 #define ETH_RSWITCH_INIT(inst) \
 	static const struct eth_rswitch_config eth_rswitch_config_##inst = { \
 		DEVICE_MMIO_ROM_INIT(DT_DRV_INST(inst)), \
-		.reg = DT_INST_REG_ADDR(inst), /* TODO utile ? */ \
+		/*.reg = DT_INST_REG_ADDR(inst), TODO utile ? */ \
 		.coma_offset = DT_INST_PROP(inst, coma_reg_offset), \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)), \
 		.rsw3_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3, name), \
@@ -222,14 +328,14 @@ static int eth_rswitch_device_init(const struct device *dev)
 \
 	/*DT_FOREACH_CHILD(DT_INST_CHILD(n, ports), ETH_RSWITCH_PORT_DEVICE_INIT);*/ \
 \
-	ETH_RSWITCH_DETECT_PORT(inst, 0, rsw3tsntes0); \
-	ETH_RSWITCH_DETECT_PORT(inst, 1, rsw3tsntes1); \
-	ETH_RSWITCH_DETECT_PORT(inst, 2, rsw3tsntes2); \
-	ETH_RSWITCH_DETECT_PORT(inst, 3, rsw3tsntes3); \
-	ETH_RSWITCH_DETECT_PORT(inst, 4, rsw3tsntes4); \
-	ETH_RSWITCH_DETECT_PORT(inst, 5, rsw3tsntes5); \
-	ETH_RSWITCH_DETECT_PORT(inst, 6, rsw3tsntes6); \
-	ETH_RSWITCH_DETECT_PORT(inst, 7, rsw3tsntes7); \
+	/*ETH_RSWITCH_DETECT_PORT(inst, 0, rsw3tsntes0);*/ \
+	/*ETH_RSWITCH_DETECT_PORT(inst, 1, rsw3tsntes1);*/ \
+	/*ETH_RSWITCH_DETECT_PORT(inst, 2, rsw3tsntes2);*/ \
+	/*ETH_RSWITCH_DETECT_PORT(inst, 3, rsw3tsntes3);*/ \
+	/*ETH_RSWITCH_DETECT_PORT(inst, 4, rsw3tsntes4);*/ \
+	/*ETH_RSWITCH_DETECT_PORT(inst, 5, rsw3tsntes5);*/ \
+	/*ETH_RSWITCH_DETECT_PORT(inst, 6, rsw3tsntes6);*/ \
+	/*ETH_RSWITCH_DETECT_PORT(inst, 7, rsw3tsntes7);*/ \
 \
 	DEVICE_DT_INST_DEFINE(inst, eth_rswitch_device_init, NULL,					\
 		&eth_rswitch_data_##inst, &eth_rswitch_config_##inst,				\

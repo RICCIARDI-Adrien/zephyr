@@ -327,20 +327,36 @@
 			clocks = <&scmi_clk R8A78000_CLK_RSW3>,
 				 <&scmi_clk R8A78000_CLK_RSW3TSN>,
 				 <&scmi_clk R8A78000_CLK_RSW3AES>,
-				 <&scmi_clk R8A78000_CLK_RSW3TSNTES0>,
+				 /*<&scmi_clk R8A78000_CLK_RSW3TSNTES0>,
 				 <&scmi_clk R8A78000_CLK_RSW3TSNTES1>,
 				 <&scmi_clk R8A78000_CLK_RSW3TSNTES2>,
 				 <&scmi_clk R8A78000_CLK_RSW3TSNTES3>,
 				 <&scmi_clk R8A78000_CLK_RSW3TSNTES4>,
 				 <&scmi_clk R8A78000_CLK_RSW3TSNTES5>,
 				 <&scmi_clk R8A78000_CLK_RSW3TSNTES6>,
-				 <&scmi_clk R8A78000_CLK_RSW3TSNTES7>,
+				 <&scmi_clk R8A78000_CLK_RSW3TSNTES7>,*/
 				 <&scmi_clk R8A78000_CLK_RSW3MFWD>;
 			clock-names = "rsw3", "rsw3tsn", "rsw3aes",
-				      "rsw3tsntes0", "rsw3tsntes1", "rsw3tsntes2",
+				      /*"rsw3tsntes0", "rsw3tsntes1", "rsw3tsntes2",
 				      "rsw3tsntes3", "rsw3tsntes4", "rsw3tsntes5",
-				      "rsw3tsntes6", "rsw3tsntes7", "rsw3mfwd";
+				      "rsw3tsntes6", "rsw3tsntes7",*/ "rsw3mfwd";
+				      // TODO
 			//power-domains = <&ethernet_rswitch3_pd>;
+
+			rswitch_tsn0: tsn0 {
+				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES0>;
+				id = <0>;
+			};
+
+			rswitch_tsn1: tsn1 {
+				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES1>;
+				id = <1>;
+			};
+
+			rswitch_tsn5: tsn5 {
+				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES5>;
+				id = <5>;
+			};
 
 				      // TEST
 			/*gmac0: ethernet {
