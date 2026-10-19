@@ -322,6 +322,7 @@
 };
 
 &rswitch_tsn5 {
+	local-mac-address = [FA DA CA CA BA BE];
 	status = "okay";
 };
 

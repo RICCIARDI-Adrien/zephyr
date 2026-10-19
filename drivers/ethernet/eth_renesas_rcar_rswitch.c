@@ -259,7 +259,7 @@ static int eth_rswitch_device_init(const struct device *dev)
 		.rmac_offset = DT_PROP(DT_INST_PARENT(inst), tsna_reg_base_offset) \
 			+ DT_INST_PROP(inst, id) * (RSWITCH_TSNA_AREA_SIZE + RSWITCH_RMAC_AREA_SIZE) \
 			+ RSWITCH_TSNA_AREA_SIZE, \
-		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(DT_INST_PROP(inst, id)), \
+		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(DT_INST(inst, DT_DRV_COMPAT)), \
 		.tsnes_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, name), \
 		.global_dev = DEVICE_DT_GET(DT_INST_PARENT(inst)) \
 	}; \
