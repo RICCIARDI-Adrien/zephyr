@@ -51,41 +51,61 @@ k_ticks_t z_impl_k_sleep_ticks(k_timeout_t timeout)
 {
 	uint32_t expected_wakeup_ticks;
 
+	printk("{%s:%d}\n", __func__, __LINE__);
+
 	__ASSERT(!arch_is_in_isr(), "");
+
+	printk("{%s:%d}\n", __func__, __LINE__);
 
 	SYS_PORT_TRACING_FUNC_ENTER(k_thread, sleep_ticks, timeout);
 
+	printk("{%s:%d}\n", __func__, __LINE__);
+
 	/* K_NO_WAIT is treated as a 'yield' */
 	if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
+		printk("{%s:%d}\n", __func__, __LINE__);
 		k_yield();
+		printk("{%s:%d}\n", __func__, __LINE__);
 		SYS_PORT_TRACING_FUNC_EXIT(k_thread, sleep_ticks, timeout, 0);
+		printk("{%s:%d}\n", __func__, __LINE__);
 		return 0;
 	}
 
+	printk("{%s:%d}\n", __func__, __LINE__);
 	k_spinlock_key_t key = z_sched_spinlock_lock();
+
+	printk("{%s:%d}\n", __func__, __LINE__);
 
 #if defined(CONFIG_TIMESLICING) && defined(CONFIG_SWAP_NONATOMIC)
 	pending_current = _current;
+	printk("{%s:%d}\n", __func__, __LINE__);
 #endif /* CONFIG_TIMESLICING && CONFIG_SWAP_NONATOMIC */
 	z_sched_unready_locked(_current);
+	printk("{%s:%d}\n", __func__, __LINE__);
 	expected_wakeup_ticks = (uint32_t)z_add_thread_timeout(_current, timeout);
+	printk("{%s:%d}\n", __func__, __LINE__);
 	z_mark_thread_as_sleeping(_current);
+	printk("{%s:%d}\n", __func__, __LINE__);
 
 	(void)z_swap_locked(key);
+	printk("{%s:%d}\n", __func__, __LINE__);
 
 	/* There is no meaningful remainder to report for K_FOREVER: reaching
 	 * this point at all means a k_wakeup() cut the sleep short.
 	 */
 	if (K_TIMEOUT_EQ(timeout, K_FOREVER)) {
+		printk("{%s:%d}\n", __func__, __LINE__);
 		SYS_PORT_TRACING_FUNC_EXIT(k_thread, sleep_ticks, timeout, K_TICKS_FOREVER);
 		return K_TICKS_FOREVER;
 	}
+	printk("{%s:%d}\n", __func__, __LINE__);
 
 	/* We require a 32 bit unsigned subtraction to handle a wraparound.
 	 * A normal timeout-driven wakeup leaves zero (or a slightly negative)
 	 * remainder; only an early k_wakeup() yields a positive value.
 	 */
 	uint32_t left_ticks = expected_wakeup_ticks - sys_clock_tick_get_32();
+	printk("{%s:%d}\n", __func__, __LINE__);
 
 	/* Use signed comparison so past-due wakeups (negative remainder) return 0.
 	 * k_ticks_t may be uint32_t (!CONFIG_TIMEOUT_64BIT), so comparing ticks > 0
@@ -93,12 +113,15 @@ k_ticks_t z_impl_k_sleep_ticks(k_timeout_t timeout)
 	 * remainder as a large positive value.
 	 */
 	int32_t signed_left = (int32_t)left_ticks;
+	printk("{%s:%d}\n", __func__, __LINE__);
 
 	if (signed_left < 0) {
+		printk("{%s:%d}\n", __func__, __LINE__);
 		signed_left = 0;
 	}
-
+printk("{%s:%d}\n", __func__, __LINE__);
 	SYS_PORT_TRACING_FUNC_EXIT(k_thread, sleep_ticks, timeout, signed_left);
+	printk("{%s:%d}\n", __func__, __LINE__);
 	return (k_ticks_t)signed_left;
 }
 

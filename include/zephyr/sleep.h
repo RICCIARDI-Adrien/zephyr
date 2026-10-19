@@ -103,30 +103,38 @@ static ALWAYS_INLINE int32_t z_sleep_ticks_to_int32_ms(k_ticks_t ticks)
 {
 	uint32_t t = (uint32_t)ticks;
 
+	printk("z_sleep_ticks_to_int32_ms entry\n");
+
 	/* a split is not worth narrowing for where 64 bit division is cheap */
 	if (IS_ENABLED(CONFIG_64BIT) && !Z_SLEEP_IS_SIMPLE(MSEC_PER_SEC)) {
+			printk("z_sleep_ticks_to_int32_ms %d\n", __LINE__);
 		return (int32_t)MIN(k_ticks_to_ms_ceil64(t), (uint64_t)INT32_MAX);
 	}
 
 	if (Z_SLEEP_MAX_TICKS(MSEC_PER_SEC) < (uint64_t)INT32_MAX &&
 	    t > (uint32_t)Z_SLEEP_MAX_TICKS(MSEC_PER_SEC)) {
+		printk("z_sleep_ticks_to_int32_ms %d\n", __LINE__);
 		return INT32_MAX;
 	}
 
 	/* a whole number of ticks per millisecond, 1:1 included */
 	if (Z_SLEEP_TICK_HZ % MSEC_PER_SEC == 0) {
+		printk("z_sleep_ticks_to_int32_ms %d\n", __LINE__);
 		return (int32_t)DIV_ROUND_UP(t, z_tmcvt_divisor(Z_SLEEP_TICK_HZ, MSEC_PER_SEC));
 	}
 
 	/* a whole number of milliseconds per tick */
 	if (MSEC_PER_SEC % Z_SLEEP_TICK_HZ == 0) {
+		printk("z_sleep_ticks_to_int32_ms %d\n", __LINE__);
 		return (int32_t)(t * z_tmcvt_divisor(MSEC_PER_SEC, Z_SLEEP_TICK_HZ));
 	}
 
 	if (Z_SLEEP_NO_OVERFLOW(MSEC_PER_SEC)) {
+		printk("z_sleep_ticks_to_int32_ms %d\n", __LINE__);
 		return (int32_t)Z_SLEEP_SPLIT(t, MSEC_PER_SEC);
 	}
 
+	printk("z_sleep_ticks_to_int32_ms %d\n", __LINE__);
 	/* tick rate too high to be scaled in 32 bits at all */
 	return (int32_t)MIN(k_ticks_to_ms_ceil64(t), (uint64_t)INT32_MAX);
 }
@@ -203,13 +211,19 @@ static ALWAYS_INLINE int32_t z_sleep_ticks_to_int32_us(k_ticks_t ticks)
  */
 static ALWAYS_INLINE int32_t k_sleep(k_timeout_t timeout)
 {
+	printk("{%s:%d}\n", __func__, __LINE__);
+
 	k_ticks_t ticks = k_sleep_ticks(timeout);
+
+	printk("{%s:%d}\n", __func__, __LINE__);
 
 	/* k_sleep() still returns 32 bit milliseconds for compatibility */
 	if (K_TIMEOUT_EQ(timeout, Z_FOREVER)) {
+		printk("{%s:%d}\n", __func__, __LINE__);
 		return (int32_t)K_TICKS_FOREVER;
 	}
 
+	printk("{%s:%d}\n", __func__, __LINE__);
 	return z_sleep_ticks_to_int32_ms(ticks);
 }
 
@@ -226,6 +240,7 @@ static ALWAYS_INLINE int32_t k_sleep(k_timeout_t timeout)
  */
 static ALWAYS_INLINE int32_t k_msleep(int32_t ms)
 {
+	printk("{%s:%d}\n", __func__, __LINE__);
 	return k_sleep(Z_TIMEOUT_MS(ms));
 }
 

@@ -82,57 +82,88 @@ static ALWAYS_INLINE unsigned int do_swap(unsigned int key,
 {
 	struct k_thread *new_thread, *old_thread;
 
+	printk("{%s:%d}\n", __func__, __LINE__);
+
 #ifdef CONFIG_SPIN_VALIDATE
 	z_assert_can_swap(key, lock);
 #endif /* CONFIG_SPIN_VALIDATE */
 
+	printk("{%s:%d}\n", __func__, __LINE__);
 	old_thread = _current;
 
+	printk("{%s:%d}\n", __func__, __LINE__);
 	z_check_stack_sentinel();
 
+	printk("{%s:%d}\n", __func__, __LINE__);
 	old_thread->swap_retval = -EAGAIN;
 
 	/* We always take the scheduler spinlock if we don't already
 	 * have it.  We "release" other spinlocks here.  But we never
 	 * drop the interrupt lock.
 	 */
+	printk("{%s:%d}\n", __func__, __LINE__);
 	if (is_spinlock && (lock != NULL) && !z_is_sched_spinlock(lock)) {
+		printk("{%s:%d}\n", __func__, __LINE__);
 		k_spin_release(lock);
+		printk("{%s:%d}\n", __func__, __LINE__);
 	}
 	if (IS_ENABLED(CONFIG_SMP) || IS_ENABLED(CONFIG_SPIN_VALIDATE)) {
+		printk("{%s:%d}\n", __func__, __LINE__);
 		/* Taking a nested uniprocessor lock in void context is a noop */
 		if (!is_spinlock || !z_is_sched_spinlock(lock)) {
+			printk("{%s:%d}\n", __func__, __LINE__);
 			(void)z_sched_spinlock_lock();
+			printk("{%s:%d}\n", __func__, __LINE__);
 		}
+		printk("{%s:%d}\n", __func__, __LINE__);
 	}
 
 #ifdef CONFIG_SMP
+printk("{%s:%d}\n", __func__, __LINE__);
 	new_thread = z_swap_next_thread();
 #else
+	printk("{%s:%d}\n", __func__, __LINE__);
 	new_thread = _kernel.ready_q.cache;
 #endif
 
+	printk("{%s:%d}\n", __func__, __LINE__);
 	if (new_thread != old_thread) {
+		printk("{%s:%d}\n", __func__, __LINE__);
 		z_sched_usage_switch(new_thread);
+		printk("{%s:%d}\n", __func__, __LINE__);
 
 #ifdef CONFIG_SMP
+		printk("{%s:%d}\n", __func__, __LINE__);
 		new_thread->base.cpu = arch_curr_cpu()->id;
+		printk("{%s:%d}\n", __func__, __LINE__);
 
 		if (!is_spinlock) {
+			printk("{%s:%d}\n", __func__, __LINE__);
 			z_smp_release_global_lock(new_thread);
+			printk("{%s:%d}\n", __func__, __LINE__);
 		}
 #endif /* CONFIG_SMP */
+printk("{%s:%d}\n", __func__, __LINE__);
 		z_thread_mark_switched_out();
+		printk("{%s:%d}\n", __func__, __LINE__);
 		z_sched_switch_spin(new_thread);
+		printk("{%s:%d}\n", __func__, __LINE__);
 		z_current_thread_set(new_thread);
+		printk("{%s:%d}\n", __func__, __LINE__);
 
 #ifdef CONFIG_TIMESLICING
+		printk("{%s:%d}\n", __func__, __LINE__);
 		z_time_slice_reset(new_thread);
+		printk("{%s:%d}\n", __func__, __LINE__);
 #endif /* CONFIG_TIMESLICING */
 
+		printk("{%s:%d}\n", __func__, __LINE__);
 		z_sched_spinlock_transfer_owner(new_thread);
+		printk("{%s:%d}\n", __func__, __LINE__);
 
+		printk("{%s:%d}\n", __func__, __LINE__);
 		arch_cohere_stacks(old_thread, NULL, new_thread);
+		printk("{%s:%d}\n", __func__, __LINE__);
 
 #ifdef CONFIG_SMP
 		/* Now add _current back to the run queue, once we are
@@ -143,32 +174,50 @@ static ALWAYS_INLINE unsigned int do_swap(unsigned int key,
 		 * set of CPUs pick a cycle of threads to run and wait for them
 		 * all to context switch forever.
 		 */
+		printk("{%s:%d}\n", __func__, __LINE__);
 		if (z_is_thread_queued(old_thread)) {
+			printk("{%s:%d}\n", __func__, __LINE__);
 			runq_add(old_thread);
+			printk("{%s:%d}\n", __func__, __LINE__);
 		}
+		printk("{%s:%d}\n", __func__, __LINE__);
 		signal_pending_ipi();
+		printk("{%s:%d}\n", __func__, __LINE__);
 #endif /* CONFIG_SMP */
 		void *newsh = new_thread->switch_handle;
+		printk("{%s:%d}\n", __func__, __LINE__);
 
 		if (IS_ENABLED(CONFIG_SMP)) {
+			printk("{%s:%d}\n", __func__, __LINE__);
 			/* Active threads must have a null here.  And
 			 * it must be seen before the scheduler lock
 			 * is released!
 			 */
 			new_thread->switch_handle = NULL;
 			barrier_dmem_fence_full(); /* write barrier */
+			printk("{%s:%d}\n", __func__, __LINE__);
 		}
+		printk("{%s:%d}\n", __func__, __LINE__);
 		z_sched_spinlock_release();
+		printk("{%s:%d}\n", __func__, __LINE__);
 		arch_switch(newsh, &old_thread->switch_handle);
+		printk("{%s:%d}\n", __func__, __LINE__);
 	} else {
+		printk("{%s:%d}\n", __func__, __LINE__);
 		z_sched_spinlock_release();
+		printk("{%s:%d}\n", __func__, __LINE__);
 	}
+	printk("{%s:%d}\n", __func__, __LINE__);
 
 	if (is_spinlock) {
+		printk("{%s:%d}\n", __func__, __LINE__);
 		arch_irq_unlock(key);
 	} else {
+		printk("{%s:%d}\n", __func__, __LINE__);
 		irq_unlock(key);
 	}
+
+	printk("{%s:%d}\n", __func__, __LINE__);
 
 	return _current->swap_retval;
 }
@@ -180,6 +229,7 @@ static inline int z_swap_irqlock(unsigned int key)
 
 static inline int z_swap(struct k_spinlock *lock, k_spinlock_key_t key)
 {
+	printk("{%s:%d}\n", __func__, __LINE__);
 	return do_swap(key.key, lock, true);
 }
 
@@ -199,13 +249,18 @@ static inline void z_sched_switch_spin(struct k_thread *thread)
 static inline int z_swap_irqlock(unsigned int key)
 {
 	int ret;
+	printk("{%s:%d}\n", __func__, __LINE__);
 	z_check_stack_sentinel();
+	printk("{%s:%d}\n", __func__, __LINE__);
 
 #ifdef CONFIG_SPIN_VALIDATE
+	printk("{%s:%d}\n", __func__, __LINE__);
 	z_assert_can_swap(key, NULL);
+	printk("{%s:%d}\n", __func__, __LINE__);
 #endif /* CONFIG_SPIN_VALIDATE */
-
+printk("{%s:%d}\n", __func__, __LINE__);
 	ret = arch_swap(key);
+	printk("{%s:%d}\n", __func__, __LINE__);
 	return ret;
 }
 
@@ -216,6 +271,7 @@ static inline int z_swap_irqlock(unsigned int key)
 static ALWAYS_INLINE int z_swap(struct k_spinlock *lock, k_spinlock_key_t key)
 {
 	k_spin_release(lock);
+	printk("{%s:%d}\n", __func__, __LINE__);
 	return z_swap_irqlock(key.key);
 }
 
@@ -231,6 +287,7 @@ static inline void z_swap_unlocked(void)
  */
 static inline int z_swap_locked(k_spinlock_key_t key)
 {
+	printk("{%s:%d}\n", __func__, __LINE__);
 	return z_swap(&_sched_spinlock, key);
 }
 
