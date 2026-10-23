@@ -69,7 +69,7 @@ static int mdio_rswitch_init(const struct device *dev)
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(inst) \
 	}; \
 \
-	DEVICE_DT_INST_DEFINE(inst, NULL, NULL, NULL, &mdio_rswitch_config_##inst, POST_KERNEL, \
+	DEVICE_DT_INST_DEFINE(inst, mdio_rswitch_init, NULL, NULL, &mdio_rswitch_config_##inst, POST_KERNEL, \
 		CONFIG_MDIO_INIT_PRIORITY, &mdio_rswitch_api);
 
 DT_INST_FOREACH_STATUS_OKAY(MDIO_RSWITCH_INIT)

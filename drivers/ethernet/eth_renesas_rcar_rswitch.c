@@ -32,19 +32,44 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 
 /* R-Switch Ethernet Agent Mode Configuration register */
 #define RSWITCH_TSNA_EAMC 0x0000
+/* R-Switch Ethernet Agent Mode Configuration register bits */
 #define RSWITCH_TSNA_EAMC_OPC_MASK 0x03
 #define RSWITCH_TSNA_EAMC_OPC_RESET 0
 #define RSWITCH_TSNA_EAMC_OPC_DISABLE 1
 #define RSWITCH_TSNA_EAMC_OPC_CONFIG 2
 #define RSWITCH_TSNA_EAMC_OPC_OPERATION 3
 
-/* R-Switch Ethernet Agent Mode Status. register */
+/* R-Switch Ethernet Agent Mode Status register */
 #define RSWITCH_TSNA_EAMS 0x0004
+/* R-Switch Ethernet Agent Mode Status register bits */
 #define RSWITCH_TSNA_EAMS_OPS_MASK 0x03
 #define RSWITCH_TSNA_EAMS_OPS_RESET 0
 #define RSWITCH_TSNA_EAMS_OPS_DISABLE 1
 #define RSWITCH_TSNA_EAMS_OPS_CONFIG 2
 #define RSWITCH_TSNA_EAMS_OPS_OPERATION 3
+
+/* MAC PHY interfaces configuration register */
+#define RSWITCH_RMAC_MPIC 0x0004
+/* MAC PHY interfaces configuration register bits */
+#define RSWITCH_RMAC_MPIC_PSMCT_MASK 0x0000000F
+#define RSWITCH_RMAC_MPIC_PSMCT_SHIFT 28
+#define RSWITCH_RMAC_MPIC_PSMHT_MASK 0x0000000F
+#define RSWITCH_RMAC_MPIC_PSMHT_SHIFT 24
+#define RSWITCH_RMAC_MPIC_PSMCS_MASK 0x000000FF
+#define RSWITCH_RMAC_MPIC_PSMCS_SHIFT 13
+#define RSWITCH_RMAC_MPIC_PLSPP BIT(10)
+#define RSWITCH_RMAC_MPIC_PIPP BIT(9)
+#define RSWITCH_RMAC_MPIC_LSC_MASK 0x00000007
+#define RSWITCH_RMAC_MPIC_LSC_SHIFT 3
+#define RSWITCH_RMAC_MPIC_LSC_10_MBPS 0x0
+#define RSWITCH_RMAC_MPIC_LSC_100_MBPS 0x1
+#define RSWITCH_RMAC_MPIC_LSC_1_GBPS 0x2
+#define RSWITCH_RMAC_MPIC_LSC_2_5_GBPS 0x3
+#define RSWITCH_RMAC_MPIC_LSC_5_GBPS 0x4
+#define RSWITCH_RMAC_MPIC_LSC_10_GBPS 0x5
+#define RSWITCH_RMAC_MPIC_PIS_MASK 0x00000007
+#define RSWITCH_RMAC_MPIC_PIS_SHIFT 0
+#define RSWITCH_RMAC_MPIC_PIS_GMII 0x2
 
 #define RSWITCH_TSN_COUNT 13
 
@@ -89,6 +114,18 @@ struct eth_rswitch_tsn_config {
 	const struct device *phy_dev;
 };
 
+struct eth_rswitch_tsn_data {
+	//bool is_
+	enum phy_link_speed current_speed;
+};
+
+enum eth_rswitch_operating_mode {
+	RSWITCH_OPERATING_MODE_RESET,
+	RSWITCH_OPERATING_MODE_DISABLE,
+	RSWITCH_OPERATING_MODE_CONFIG,
+	RSWITCH_OPERATING_MODE_OPERATION
+};
+
 // TODO pareil pour port ?
 static inline uint32_t eth_rswitch_read(const struct device *dev, uint32_t offset)
 {
@@ -128,6 +165,51 @@ static inline int eth_rswitch_busy_wait(const struct device *global_dev, uint32_
 	return 0;
 }
 
+static int eth_rswitch_set_operating_mode(const struct device *tsn_dev,
+					  enum eth_rswitch_operating_mode mode)
+{
+	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
+	const struct device *global_dev = tsn_config->global_dev;
+	uint32_t val;
+
+	/* Basic parameter sanitization */
+	mode &= RSWITCH_TSNA_EAMC_OPC_MASK;
+
+	printk("op mode AVANT EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
+
+	/* The TSN must be in Disable mode before going to any other mode */
+	val = eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS);
+	if ((val & RSWITCH_TSNA_EAMC_OPC_MASK) != RSWITCH_OPERATING_MODE_DISABLE) {
+		eth_rswitch_write(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC,
+			RSWITCH_OPERATING_MODE_DISABLE);
+		if (eth_rswitch_busy_wait(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS,
+			RSWITCH_TSNA_EAMS_OPS_MASK, RSWITCH_OPERATING_MODE_DISABLE) != 0) {
+			LOG_ERR("Failed to set the Disable operating mode for %s.\n",
+				tsn_dev->name);
+			__ASSERT_NO_MSG(0);
+			return -EIO;
+		}
+	}
+
+	if (mode == RSWITCH_OPERATING_MODE_DISABLE) {
+		return 0;
+	}
+	eth_rswitch_write(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC, mode);
+	if (eth_rswitch_busy_wait(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS,
+		RSWITCH_TSNA_EAMS_OPS_MASK, mode) != 0) {
+		LOG_ERR("Failed to set the %d operating mode for %s.\n", mode, tsn_dev->name);
+		__ASSERT_NO_MSG(0);
+		return -EIO;
+	}
+
+printk("op mode APRES EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
+
+	// TODO
+	//net_eth_carrier_set(data->iface, state->is_up);
+
+	return 0;
+}
+
 int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t prtad, uint8_t devad,
 			      uint16_t *data)
 {
@@ -137,7 +219,7 @@ int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t prtad, uint8_t d
 	int ret;
 
 	// TEST
-	LOG_WRN("AVANT EAMC=%d, EAMS=%d", eth_rswitch_read(port_config->global_dev, port_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(port_config->global_dev, port_config->tsna_offset + RSWITCH_TSNA_EAMS));
+	//LOG_WRN("AVANT EAMC=%d, EAMS=%d", eth_rswitch_read(port_config->global_dev, port_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(port_config->global_dev, port_config->tsna_offset + RSWITCH_TSNA_EAMS));
 
 	/*eth_rswitch_write(dev, port_config->tsna_offset + RSWITCH_TSNA_EAMC, RSWITCH_TSNA_EAMC_OPC_CONFIG);
 	LOG_WRN("APRES ecriture EAMC EAMC=%d, EAMS=%d", eth_rswitch_read(dev, port_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(dev, port_config->tsna_offset + RSWITCH_TSNA_EAMS));
@@ -146,7 +228,9 @@ int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t prtad, uint8_t d
 		RSWITCH_TSNA_EAMS_OPS_MASK, RSWITCH_TSNA_EAMS_OPS_CONFIG);
 	LOG_WRN("APRES busywait ret=%d", ret);*/
 
-	LOG_ERR("MERDE ALORS");
+	//LOG_ERR("MERDE ALORS");
+
+
 
 	return 0;
 }
@@ -155,8 +239,45 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 			       void *user_data)
 {
 	const struct device *tsn_dev = user_data;
+	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
+	const struct device *global_dev = tsn_config->global_dev;
+	uint32_t base_offset, val;
+	//struct eth_rswitch_tsn_data *tsn_data = tsn_dev->data;
 
-	printk("CONNARD %s\n", tsn_dev->name);
+	printk("eth_rswitch_phy_cb %s\n MPIC avant=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+
+	/* The MPIC register can only be written in Configuration mode */
+	if (eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_CONFIG) != 0) {
+		return;
+	}
+
+	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPIC;
+	val = (RSWITCH_RMAC_MPIC_PIS_GMII << RSWITCH_RMAC_MPIC_PIS_SHIFT) |
+		1023 << RSWITCH_RMAC_MPIC_PSMCS_SHIFT; // TEST
+
+	if (PHY_LINK_IS_SPEED_1000M(state->speed)) {
+		val |= RSWITCH_RMAC_MPIC_LSC_1_GBPS << RSWITCH_RMAC_MPIC_LSC_SHIFT;
+	}
+	else if (PHY_LINK_IS_SPEED_100M(state->speed)) {
+		val |= RSWITCH_RMAC_MPIC_LSC_100_MBPS << RSWITCH_RMAC_MPIC_LSC_SHIFT;
+	}
+	else if (PHY_LINK_IS_SPEED_10M(state->speed)) {
+		val |= RSWITCH_RMAC_MPIC_LSC_10_MBPS << RSWITCH_RMAC_MPIC_LSC_SHIFT;
+	}
+	else {
+		LOG_ERR("Unsupported link speed 0x%X.", state->speed);
+		// TEST
+		//__ASSERT_NO_MSG(0);
+		//return;
+	}
+	eth_rswitch_write(global_dev, base_offset, val);
+
+	// TODO if inutile
+	if (eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_DISABLE) != 0) {
+		return;
+	}
+
+	printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
 }
 
 static void eth_rswitch_iface_init(struct net_if *iface)
@@ -174,7 +295,7 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 
 	if (clock_control_on(global_config->clock_dev, tsn_config->tsnes_clk) != 0) {
 		LOG_ERR("Failed to turn the tsn%d clock on.", tsn_config->id);
-		__ASSERT_NO_MSG();
+		__ASSERT_NO_MSG(0);
 		return;
 	}
 
@@ -194,7 +315,7 @@ printk("iface init AVANT EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_c
 	if (eth_rswitch_busy_wait(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS,
 		RSWITCH_TSNA_EAMS_OPS_MASK, RSWITCH_TSNA_EAMS_OPS_CONFIG) != 0) {
 		LOG_ERR("Failed to set the configuration mode for %s.\n", dev->name);
-		__ASSERT_NO_MSG();
+		__ASSERT_NO_MSG(0);
 		return;
 	}
 
@@ -212,7 +333,7 @@ printk("iface init APRES EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_c
 	ret = phy_link_callback_set(tsn_config->phy_dev, eth_rswitch_phy_cb, (void *)dev);
 	if (ret != 0) {
 		LOG_ERR("Failed to register the PHY link callback for %s (%d).", dev->name, ret);
-		__ASSERT_NO_MSG();
+		__ASSERT_NO_MSG(0);
 		return;
 	}
 
@@ -305,7 +426,9 @@ static int eth_rswitch_device_init(const struct device *dev)
 		.phy_dev = DEVICE_DT_GET(DT_INST_PHANDLE(inst, phy_handle)) \
 	}; \
 \
-	ETH_NET_DEVICE_DT_INST_DEFINE(inst, NULL, NULL, NULL /*data*/, &eth_rswitch_tsn_config_##inst, CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
+	static struct eth_rswitch_tsn_data eth_rswitch_tsn_data_##inst; \
+\
+	ETH_NET_DEVICE_DT_INST_DEFINE(inst, NULL, NULL, &eth_rswitch_tsn_data_##inst, &eth_rswitch_tsn_config_##inst, CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
 
 #if 0
 	ETH_NET_DEVICE_INIT_INSTANCE(rswitch_tsn_##inst, "eth" STRINGIFY(DT_INST_PROP(inst, id)), DT_INST_PROP(inst, id), \
