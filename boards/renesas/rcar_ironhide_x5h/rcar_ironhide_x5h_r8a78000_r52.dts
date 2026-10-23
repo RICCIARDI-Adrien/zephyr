@@ -318,32 +318,26 @@
 };
 
 &rswitch_tsn0 {
-	status = "okay";
+	phy-handle = <&rswitch_phy0>;
+	status = "disabled";
 };
 
 &rswitch_tsn5 {
 	local-mac-address = [FA DA CA CA BA BE];
+	phy-handle = <&rswitch_phy5>;
 	status = "okay";
-
-	/*
-	mdio {
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		// TODO test avec 3 pour ne pas écrire sur le vrai PHY
-		//ethernet-phy@2 {
-		ethernet-phy@3 {
-			compatible = "ethernet-phy"; // TEST
-			//reg = <2>;
-			reg = <3>;
-			default-speeds = "10BASE Full-Duplex";
-			//status = "okay";
-		};
-	};*/
 };
 
 &rswitch_mdio0 {
-	status = "okay";
+	status = "disabled";
+
+	// TEST
+	rswitch_phy0: ethernet-phy@9 {
+		compatible = "ethernet-phy";
+		reg = <9>;
+		default-speeds = "10BASE Half-Duplex";
+		status = "disabled";
+	};
 };
 
 &rswitch_mdio5 {
@@ -351,11 +345,11 @@
 
 	// TODO test avec 3 pour ne pas écrire sur le vrai PHY
 	//ethernet-phy@2 {
-	ethernet-phy@3 {
+	rswitch_phy5: ethernet-phy@3 {
 		compatible = "ethernet-phy"; // TEST
 		//reg = <2>;
 		reg = <3>;
-		default-speeds = "10BASE Full-Duplex", "100BASE Full-Duplex";
-		//status = "okay";
+		default-speeds = "1000BASE Full-Duplex";
+		status = "okay";
 	};
 };

@@ -7,6 +7,7 @@
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/ethernet.h>
+#include <zephyr/net/phy.h>
 //#include <zephyr/pm/device.h>
 //#include <zephyr/pm/device_runtime.h>
 #include "eth_renesas_rcar_rswitch_priv.h"
@@ -85,6 +86,7 @@ struct eth_rswitch_tsn_config {
 	struct net_eth_mac_config mac_config;
 	clock_control_subsys_t tsnes_clk;
 	const struct device *global_dev;
+	const struct device *phy_dev;
 };
 
 // TODO pareil pour port ?
@@ -111,27 +113,17 @@ static inline void eth_rswitch_write(const struct device *dev, uint32_t offset, 
 }
 
 /* Note : this function can sleep, do not use it in interrupt context. */
-//static inline int eth_rswitch_busy_wait(mem_addr_t reg, uint32_t bit_mask, uint32_t expected_value)
 static inline int eth_rswitch_busy_wait(const struct device *global_dev, uint32_t offset,
 					uint32_t bit_mask, uint32_t expected_value)
 {
 	const uint32_t TIMEOUT = 100000; /* 100 ms */
 
-	/*if (expect_one) {
-		success = WAIT_FOR(sys_read32(reg) & bit_mask, TIMEOUT, k_sleep(K_USEC(10)));
-	} else {
-		success = WAIT_FOR(!(sys_read32(reg) & bit_mask), TIMEOUT, k_sleep(K_USEC(10)));
-	}*/
-	//if (!WAIT_FOR((sys_read32(reg) & bit_mask) == expected_value, TIMEOUT,
-	printk("KK offset=0x%08X val=0x%08X\n", offset, eth_rswitch_read(global_dev, offset));
-#if 1
 	if (!WAIT_FOR((eth_rswitch_read(global_dev, offset) & bit_mask) == expected_value, TIMEOUT,
 		k_sleep(K_USEC(10)))) {
 		LOG_DBG("Busy wait timed out. offset=0x%08X, bit_mask=0x%08X, exp_value=0x%08X.",
 			offset, bit_mask, expected_value);
 		return -EAGAIN;
 	}
-#endif
 
 	return 0;
 }
@@ -159,12 +151,21 @@ int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t prtad, uint8_t d
 	return 0;
 }
 
+static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *state,
+			       void *user_data)
+{
+	const struct device *tsn_dev = user_data;
+
+	printk("CONNARD %s\n", tsn_dev->name);
+}
+
 static void eth_rswitch_iface_init(struct net_if *iface)
 {
 	const struct device *dev = net_if_get_device(iface);
 	const struct eth_rswitch_tsn_config *tsn_config = dev->config;
 	const struct device *global_dev = tsn_config->global_dev;
 	const struct eth_rswitch_config *global_config = global_dev->config;
+	int ret;
 	uint32_t base_offset, val;
 
 	// TODO
@@ -183,6 +184,7 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 	val |= 1 << tsn_config->id;
 	eth_rswitch_write(global_dev, base_offset, val);
 
+#if 0
 printk("iface init AVANT EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
 
 	/* Switch the TSN to configuration mode (it is already in disable mode after reset) */
@@ -200,12 +202,19 @@ printk("iface init APRES EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_c
 
 	/* Configure the PHY link */
 
-
+#endif
 
 	net_if_set_link_addr(iface, tsn_config->mac_config.addr, tsn_config->mac_config.addr_len,
 		NET_LINK_ETHERNET);
 	ethernet_init(iface);
 	net_if_carrier_off(iface);
+
+	ret = phy_link_callback_set(tsn_config->phy_dev, eth_rswitch_phy_cb, (void *)dev);
+	if (ret != 0) {
+		LOG_ERR("Failed to register the PHY link callback for %s (%d).", dev->name, ret);
+		__ASSERT_NO_MSG();
+		return;
+	}
 
 	printk("INIT IFACE nom=%s OK\n", dev->name);
 }
@@ -292,7 +301,8 @@ static int eth_rswitch_device_init(const struct device *dev)
 			+ RSWITCH_TSNA_AREA_SIZE, \
 		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(DT_INST(inst, DT_DRV_COMPAT)), \
 		.tsnes_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, name), \
-		.global_dev = DEVICE_DT_GET(DT_INST_PARENT(inst)) \
+		.global_dev = DEVICE_DT_GET(DT_INST_PARENT(inst)), \
+		.phy_dev = DEVICE_DT_GET(DT_INST_PHANDLE(inst, phy_handle)) \
 	}; \
 \
 	ETH_NET_DEVICE_DT_INST_DEFINE(inst, NULL, NULL, NULL /*data*/, &eth_rswitch_tsn_config_##inst, CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
