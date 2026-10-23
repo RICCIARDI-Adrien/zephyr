@@ -5,6 +5,6 @@ description: Renesas R-Car R-Switch MDIO driver node
 
 compatible: "renesas,rcar-rswitch-mdio"
 
-include: mdio-controller.yaml
+include: [mdio-controller.yaml, pinctrl-device.yaml]
 
 #on-bus: rcar

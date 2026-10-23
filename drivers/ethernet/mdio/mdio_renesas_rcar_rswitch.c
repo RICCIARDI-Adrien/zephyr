@@ -5,6 +5,7 @@
  */
 
 #include <zephyr/drivers/mdio.h>
+#include <zephyr/drivers/pinctrl.h>
 #include <zephyr/logging/log.h>
 #include "../eth_renesas_rcar_rswitch_priv.h"
 
@@ -13,7 +14,8 @@ LOG_MODULE_REGISTER(mdio_rswitch, CONFIG_MDIO_LOG_LEVEL);
 #define DT_DRV_COMPAT renesas_rcar_rswitch_mdio
 
 struct mdio_rswitch_config {
-	const struct device *port_dev;
+	const struct device *tsn_dev;
+	const struct pinctrl_dev_config *pcfg;
 };
 
 static int mdio_rswitch_c22_read(const struct device *dev, uint8_t prtad, uint8_t devad,
@@ -24,7 +26,7 @@ static int mdio_rswitch_c22_read(const struct device *dev, uint8_t prtad, uint8_
 
 	const struct mdio_rswitch_config *config = dev->config;
 
-	return eth_rswitch_mdio_c22_read(config->port_dev, prtad, devad, data);
+	return eth_rswitch_mdio_c22_read(config->tsn_dev, prtad, devad, data);
 }
 
 static int mdio_rswitch_c22_write(const struct device *dev, uint8_t prtad, uint8_t devad,
@@ -46,12 +48,25 @@ static DEVICE_API(mdio, mdio_rswitch_api) = {
 
 static int mdio_rswitch_init(const struct device *dev)
 {
+	const struct mdio_rswitch_config *config = dev->config;
+	int ret;
+
+	ret = pinctrl_apply_state(config->pcfg, PINCTRL_STATE_DEFAULT);
+	if (ret != 0) {
+		LOG_ERR("Failed to apply the pinctrl default state to device %s (%d).",
+			dev->name, ret);
+		return ret;
+	}
+
 	return 0;
 }
 
 #define MDIO_RSWITCH_INIT(inst) \
+	PINCTRL_DT_INST_DEFINE(inst); \
+\
 	static struct mdio_rswitch_config mdio_rswitch_config_##inst = { \
-		.port_dev = DEVICE_DT_GET(DT_INST_PARENT(inst)) \
+		.tsn_dev = DEVICE_DT_GET(DT_INST_PARENT(inst)), \
+		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(inst) \
 	}; \
 \
 	DEVICE_DT_INST_DEFINE(inst, NULL, NULL, NULL, &mdio_rswitch_config_##inst, POST_KERNEL, \

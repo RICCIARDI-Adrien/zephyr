@@ -341,6 +341,12 @@
 };
 
 &rswitch_mdio5 {
+	// TODO TEST
+	pinctrl-0 = <&rswitch_etha4_phyint_default
+		     &rswitch_etha4_link_default
+		     &rswitch_etha4_mdc_default
+		     &rswitch_etha4_mdio_default>;
+	pinctrl-names = "default";
 	status = "okay";
 
 	// TODO test avec 3 pour ne pas écrire sur le vrai PHY
