@@ -324,6 +324,22 @@
 &rswitch_tsn5 {
 	local-mac-address = [FA DA CA CA BA BE];
 	status = "okay";
+
+	/*
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		// TODO test avec 3 pour ne pas écrire sur le vrai PHY
+		//ethernet-phy@2 {
+		ethernet-phy@3 {
+			compatible = "ethernet-phy"; // TEST
+			//reg = <2>;
+			reg = <3>;
+			default-speeds = "10BASE Full-Duplex";
+			//status = "okay";
+		};
+	};*/
 };
 
 &rswitch_mdio0 {
@@ -332,4 +348,14 @@
 
 &rswitch_mdio5 {
 	status = "okay";
+
+	// TODO test avec 3 pour ne pas écrire sur le vrai PHY
+	//ethernet-phy@2 {
+	ethernet-phy@3 {
+		compatible = "ethernet-phy"; // TEST
+		//reg = <2>;
+		reg = <3>;
+		default-speeds = "10BASE Full-Duplex", "100BASE Full-Duplex";
+		//status = "okay";
+	};
 };

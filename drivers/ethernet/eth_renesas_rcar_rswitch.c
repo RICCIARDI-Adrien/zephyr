@@ -179,21 +179,19 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 
 	/* Enable the port clock */
 	base_offset = global_config->coma_offset + RSWITCH_COMA_RCEC;
-	printk("registre RCEC AV 0x%08X\n", eth_rswitch_read(global_dev, base_offset));
 	val = eth_rswitch_read(global_dev, base_offset);
 	val |= 1 << tsn_config->id;
 	eth_rswitch_write(global_dev, base_offset, val);
-	printk("registre RCEC AP 0x%08X\n", eth_rswitch_read(global_dev, base_offset));
 
 printk("iface init AVANT EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
 
 	/* Switch the TSN to configuration mode (it is already in disable mode after reset) */
 	//base_addr = global_dev->
 	eth_rswitch_write(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC,
-		RSWITCH_TSNA_EAMC_OPC_CONFIG); printk("iface init A\n");
+		RSWITCH_TSNA_EAMC_OPC_CONFIG);
 	if (eth_rswitch_busy_wait(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS,
 		RSWITCH_TSNA_EAMS_OPS_MASK, RSWITCH_TSNA_EAMS_OPS_CONFIG) != 0) {
-		printk("iface init B\n");
+		LOG_ERR("Failed to set the configuration mode for %s.\n", dev->name);
 		__ASSERT_NO_MSG();
 		return;
 	}
