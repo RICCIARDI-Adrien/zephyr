@@ -68,6 +68,7 @@ struct eth_rswitch_data {
 	DEVICE_MMIO_RAM;
 };
 
+// TODO virer
 struct eth_rswitch_port_config {
 	int id;
 	uint32_t tsna_offset; /* Specific to this port */
@@ -91,9 +92,12 @@ static inline uint32_t eth_rswitch_read(const struct device *dev, uint32_t offse
 {
 	const struct eth_rswitch_config *config = dev->config;
 
-	LOG_ERR("LECTURE ADDR 0x%08X MMIO=0x%lX", config->reg + offset, DEVICE_MMIO_GET(dev) + offset);
+	uint32_t res = sys_read32(DEVICE_MMIO_GET(dev) + offset);
+	//printk("\033[32mLECTURE 0x%lX=0x%08X\033[0m\n", DEVICE_MMIO_GET(dev) + offset, res);
+	return res;
 
-	return sys_read32(/*config->reg*/DEVICE_MMIO_GET(dev) + offset);
+	// TODO vraie version
+	//return sys_read32(DEVICE_MMIO_GET(dev) + offset);
 }
 
 // TODO pareil pour port ?
@@ -101,33 +105,38 @@ static inline void eth_rswitch_write(const struct device *dev, uint32_t offset, 
 {
 	const struct eth_rswitch_config *config = dev->config;
 
-	LOG_ERR("ECRITURE ADDR 0x%08X MMIO=0x%lX", config->reg + offset, DEVICE_MMIO_GET(dev) + offset);
+	//printk("\033[32mECRITURE MMIO=0x%lX\033[0m\n", DEVICE_MMIO_GET(dev) + offset);
 
-	sys_write32(value, /*config->reg*/DEVICE_MMIO_GET(dev) + offset);
+	sys_write32(value, DEVICE_MMIO_GET(dev) + offset);
 }
 
 /* Note : this function can sleep, do not use it in interrupt context. */
-static inline int eth_rswitch_busy_wait(mem_addr_t reg, uint32_t bit_mask, uint32_t expected_value)
+//static inline int eth_rswitch_busy_wait(mem_addr_t reg, uint32_t bit_mask, uint32_t expected_value)
+static inline int eth_rswitch_busy_wait(const struct device *global_dev, uint32_t offset,
+					uint32_t bit_mask, uint32_t expected_value)
 {
-	const int TIMEOUT = 2000; /* Don't wait for too long */
-	bool success;
+	const uint32_t TIMEOUT = 100000; /* 100 ms */
 
 	/*if (expect_one) {
 		success = WAIT_FOR(sys_read32(reg) & bit_mask, TIMEOUT, k_sleep(K_USEC(10)));
 	} else {
 		success = WAIT_FOR(!(sys_read32(reg) & bit_mask), TIMEOUT, k_sleep(K_USEC(10)));
 	}*/
-	if (!WAIT_FOR((sys_read32(reg) & bit_mask) == expected_value, TIMEOUT,
+	//if (!WAIT_FOR((sys_read32(reg) & bit_mask) == expected_value, TIMEOUT,
+	printk("KK offset=0x%08X val=0x%08X\n", offset, eth_rswitch_read(global_dev, offset));
+#if 1
+	if (!WAIT_FOR((eth_rswitch_read(global_dev, offset) & bit_mask) == expected_value, TIMEOUT,
 		k_sleep(K_USEC(10)))) {
-		LOG_DBG("Busy wait timed out. reg=0x%08lX, bit_mask=0x%08X, expected_value=0x%08X",
-			reg, bit_mask, expected_value);
+		LOG_DBG("Busy wait timed out. offset=0x%08X, bit_mask=0x%08X, exp_value=0x%08X.",
+			offset, bit_mask, expected_value);
 		return -EAGAIN;
 	}
+#endif
 
 	return 0;
 }
 
-int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t port_address, uint8_t reg_address,
+int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t prtad, uint8_t devad,
 			      uint16_t *data)
 {
 	const struct eth_rswitch_port_config *port_config = dev->config;
@@ -154,25 +163,53 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 {
 	const struct device *dev = net_if_get_device(iface);
 	const struct eth_rswitch_tsn_config *tsn_config = dev->config;
-	const struct eth_rswitch_config *global_config = tsn_config->global_dev->config;
+	const struct device *global_dev = tsn_config->global_dev;
+	const struct eth_rswitch_config *global_config = global_dev->config;
+	uint32_t base_offset, val;
 
 	// TODO
-	LOG_WRN("INIT IFACE nom=%s, id=%d, tsnaoffs=0x%08X, rmacoffs=0x%08X", dev->name, tsn_config->id, tsn_config->tsna_offset, tsn_config->rmac_offset);
+	printk("INIT IFACE nom=%s, id=%d, tsnaoffs=0x%08X, rmacoffs=0x%08X\n", dev->name, tsn_config->id, tsn_config->tsna_offset, tsn_config->rmac_offset);
 	LOG_HEXDUMP_WRN(tsn_config->mac_config.addr, tsn_config->mac_config.addr_len, "MAC=");
 
 	if (clock_control_on(global_config->clock_dev, tsn_config->tsnes_clk) != 0) {
 		LOG_ERR("Failed to turn the tsn%d clock on.", tsn_config->id);
 		__ASSERT_NO_MSG();
+		return;
 	}
+
+	/* Enable the port clock */
+	base_offset = global_config->coma_offset + RSWITCH_COMA_RCEC;
+	printk("registre RCEC AV 0x%08X\n", eth_rswitch_read(global_dev, base_offset));
+	val = eth_rswitch_read(global_dev, base_offset);
+	val |= 1 << tsn_config->id;
+	eth_rswitch_write(global_dev, base_offset, val);
+	printk("registre RCEC AP 0x%08X\n", eth_rswitch_read(global_dev, base_offset));
+
+printk("iface init AVANT EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
+
+	/* Switch the TSN to configuration mode (it is already in disable mode after reset) */
+	//base_addr = global_dev->
+	eth_rswitch_write(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC,
+		RSWITCH_TSNA_EAMC_OPC_CONFIG); printk("iface init A\n");
+	if (eth_rswitch_busy_wait(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS,
+		RSWITCH_TSNA_EAMS_OPS_MASK, RSWITCH_TSNA_EAMS_OPS_CONFIG) != 0) {
+		printk("iface init B\n");
+		__ASSERT_NO_MSG();
+		return;
+	}
+
+printk("iface init APRES EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
+
+	/* Configure the PHY link */
+
+
 
 	net_if_set_link_addr(iface, tsn_config->mac_config.addr, tsn_config->mac_config.addr_len,
 		NET_LINK_ETHERNET);
 	ethernet_init(iface);
 	net_if_carrier_off(iface);
 
-	LOG_ERR("COOOONNNN gdev=%p, gconf=%p, gdata=%p", tsn_config->global_dev, tsn_config->global_dev->config, tsn_config->global_dev->data);
-
-	LOG_WRN("INIT IFACE nom=%s OK", dev->name);
+	printk("INIT IFACE nom=%s OK\n", dev->name);
 }
 
 static const struct ethernet_api eth_rswitch_ethernet_api = {
@@ -238,10 +275,6 @@ static int eth_rswitch_device_init(const struct device *dev)
 	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RCEC, RSWITCH_COMA_RCEC_RCE);
 
 	LOG_DBG("R-Switch controller IPs version: 0x%08X.", eth_rswitch_read(dev, config->coma_offset + RSWITCH_COMA_RIPV));
-
-
-
-	LOG_ERR("PUUUUUTE dev=%p, conf=%p, data=%p", dev, dev->config, dev->data);
 
 	return 0;
 }

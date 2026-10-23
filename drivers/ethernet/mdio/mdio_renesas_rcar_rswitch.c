@@ -13,7 +13,7 @@ LOG_MODULE_REGISTER(mdio_rswitch, CONFIG_MDIO_LOG_LEVEL);
 #define DT_DRV_COMPAT renesas_rcar_rswitch_mdio
 
 struct mdio_rswitch_config {
-	const struct device *global_dev;
+	const struct device *port_dev;
 };
 
 static int mdio_rswitch_c22_read(const struct device *dev, uint8_t prtad, uint8_t devad,
@@ -24,7 +24,7 @@ static int mdio_rswitch_c22_read(const struct device *dev, uint8_t prtad, uint8_
 
 	const struct mdio_rswitch_config *config = dev->config;
 
-	return eth_rswitch_mdio_c22_read(config->global_dev, prtad, devad, data);
+	return eth_rswitch_mdio_c22_read(config->port_dev, prtad, devad, data);
 }
 
 static int mdio_rswitch_c22_write(const struct device *dev, uint8_t prtad, uint8_t devad,
@@ -46,12 +46,12 @@ static DEVICE_API(mdio, mdio_rswitch_api) = {
 
 static int mdio_rswitch_init(const struct device *dev)
 {
-
+	return 0;
 }
 
 #define MDIO_RSWITCH_INIT(inst) \
 	static struct mdio_rswitch_config mdio_rswitch_config_##inst = { \
-		.global_dev = DEVICE_DT_GET(DT_INST_PARENT(inst)) \
+		.port_dev = DEVICE_DT_GET(DT_INST_PARENT(inst)) \
 	}; \
 \
 	DEVICE_DT_INST_DEFINE(inst, NULL, NULL, NULL, &mdio_rswitch_config_##inst, POST_KERNEL, \
