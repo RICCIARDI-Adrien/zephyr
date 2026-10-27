@@ -488,6 +488,18 @@
 				};
 			};
 
+			rswitch_tsn4: tsn4 {
+				compatible = "renesas,rcar-rswitch-tsn";
+				status = "disabled";
+
+				rswitch_mdio4: mdio4 {
+					compatible = "renesas,rcar-rswitch-mdio";
+					#address-cells = <1>;
+					#size-cells = <0>;
+					status = "disabled";
+				};
+			};
+
 			rswitch_tsn5: tsn5 {
 				compatible = "renesas,rcar-rswitch-tsn";
 				/*#address-cells = <1>;

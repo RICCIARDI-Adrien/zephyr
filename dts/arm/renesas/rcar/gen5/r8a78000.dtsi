@@ -353,6 +353,11 @@
 				id = <1>;
 			};
 
+			rswitch_tsn4: tsn4 {
+				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES4>;
+				id = <4>;
+			};
+
 			rswitch_tsn5: tsn5 {
 				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES5>;
 				id = <5>;

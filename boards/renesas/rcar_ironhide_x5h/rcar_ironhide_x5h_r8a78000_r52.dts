@@ -322,10 +322,17 @@
 	status = "disabled";
 };
 
-&rswitch_tsn5 {
-	local-mac-address = [FA DA CA CA BA BE];
-	phy-handle = <&rswitch_phy5>;
+&rswitch_tsn4 {
+	local-mac-address = [FA DA CA CA BA 04];
+	phy-handle = <&rswitch_phy4>;
 	status = "okay";
+};
+
+&rswitch_tsn5 {
+	local-mac-address = [FA DA CA CA BA 05];
+	phy-handle = <&rswitch_phy5>;
+	//status = "okay";
+	status = "disabled";
 };
 
 &rswitch_mdio0 {
@@ -340,7 +347,7 @@
 	};
 };
 
-&rswitch_mdio5 {
+&rswitch_mdio4 {
 	// TODO TEST
 	pinctrl-0 = <&rswitch_etha4_phyint_default
 		     &rswitch_etha4_link_default
@@ -351,11 +358,33 @@
 
 	// TODO test avec 3 pour ne pas écrire sur le vrai PHY
 	//ethernet-phy@2 {
+	rswitch_phy4: ethernet-phy@4 {
+		compatible = "ethernet-phy"; // TEST
+		//reg = <2>;
+		reg = <4>;
+		default-speeds = "1000BASE Full-Duplex";
+		status = "okay";
+	};
+};
+
+&rswitch_mdio5 {
+	// TODO TEST
+	pinctrl-0 = <&rswitch_etha4_phyint_default
+		     &rswitch_etha4_link_default
+		     &rswitch_etha4_mdc_default
+		     &rswitch_etha4_mdio_default>;
+	pinctrl-names = "default";
+	//status = "okay";
+	status = "disabled";
+
+	// TODO test avec 3 pour ne pas écrire sur le vrai PHY
+	//ethernet-phy@2 {
 	rswitch_phy5: ethernet-phy@3 {
 		compatible = "ethernet-phy"; // TEST
 		//reg = <2>;
 		reg = <3>;
 		default-speeds = "1000BASE Full-Duplex";
-		status = "okay";
+		//status = "okay";
+		status = "disabled";
 	};
 };

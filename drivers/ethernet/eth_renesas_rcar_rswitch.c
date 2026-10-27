@@ -48,9 +48,31 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 #define RSWITCH_TSNA_EAMS_OPS_CONFIG 2
 #define RSWITCH_TSNA_EAMS_OPS_OPERATION 3
 
-/* MAC PHY interfaces configuration register */
+/* R-Switch MAC PHY station management register */
+#define RSWITCH_RMAC_MPSM 0x0000
+/* R-Switch MAC PHY station management register bits */
+#define RSWITCH_RMAC_MPSM_PRD_MASK 0x0000FFFF
+#define RSWITCH_RMAC_MPSM_PRD_SHIFT 16
+#define RSWITCH_RMAC_MPSM_POP_MASK 0x00000003
+#define RSWITCH_RMAC_MPSM_POP_SHIFT 13
+#define RSWITCH_RMAC_MPSM_POP_C22_WRITE 1
+#define RSWITCH_RMAC_MPSM_POP_C22_READ 2
+#define RSWITCH_RMAC_MPSM_POP_C45_ADDRESS 0
+#define RSWITCH_RMAC_MPSM_POP_C45_WRITE 1
+#define RSWITCH_RMAC_MPSM_POP_C45_POST_READ_INCREMENT_ADDRESS 2
+#define RSWITCH_RMAC_MPSM_POP_C45_READ 3
+#define RSWITCH_RMAC_MPSM_PRA_MASK 0x0000001F
+#define RSWITCH_RMAC_MPSM_PRA_SHIFT 8
+#define RSWITCH_RMAC_MPSM_PDA_MASK 0x0000001F
+#define RSWITCH_RMAC_MPSM_PDA_SHIFT 3
+#define RSWITCH_RMAC_MPSM_MFF BIT(2)
+#define RSWITCH_RMAC_MPSM_PSME_MASK 0x00000001
+#define RSWITCH_RMAC_MPSM_PSME_SHIFT 0
+#define RSWITCH_RMAC_MPSM_PSME BIT(0)
+
+/* R-Switch MAC PHY interfaces configuration register */
 #define RSWITCH_RMAC_MPIC 0x0004
-/* MAC PHY interfaces configuration register bits */
+/* R-Switch MAC PHY interfaces configuration register bits */
 #define RSWITCH_RMAC_MPIC_PSMCT_MASK 0x0000000F
 #define RSWITCH_RMAC_MPIC_PSMCT_SHIFT 28
 #define RSWITCH_RMAC_MPIC_PSMHT_MASK 0x0000000F
@@ -157,7 +179,7 @@ static inline int eth_rswitch_busy_wait(const struct device *global_dev, uint32_
 
 	if (!WAIT_FOR((eth_rswitch_read(global_dev, offset) & bit_mask) == expected_value, TIMEOUT,
 		k_sleep(K_USEC(10)))) {
-		LOG_DBG("Busy wait timed out. offset=0x%08X, bit_mask=0x%08X, exp_value=0x%08X.",
+		LOG_DBG("Busy wait timed out (offset=0x%08X, bit_mask=0x%08X, exp_value=0x%08X).",
 			offset, bit_mask, expected_value);
 		return -EAGAIN;
 	}
@@ -210,13 +232,55 @@ printk("op mode APRES EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_conf
 	return 0;
 }
 
-int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t prtad, uint8_t devad,
+static int eth_rswitch_mdio_read(const struct device *dev, uint8_t prtad, uint16_t regad,
+				 uint8_t devad, uint16_t *data, bool is_c45)
+{
+	const struct eth_rswitch_tsn_config *tsn_config = dev->config;
+	const struct device *global_dev = tsn_config->global_dev;
+	uint32_t val = 0, base_offset;
+
+	printk("{%s:%d} AVANT MPSM=0x%08X MPIC=0x%08X\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+
+	/* Clause 45 frame format */
+	if (is_c45) {
+	}
+	/* Clause 22 frame format */
+	else {
+		val = RSWITCH_RMAC_MPSM_POP_C22_READ << RSWITCH_RMAC_MPSM_POP_SHIFT |
+			(regad & RSWITCH_RMAC_MPSM_PRA_MASK) << RSWITCH_RMAC_MPSM_PRA_SHIFT |
+			(devad & RSWITCH_RMAC_MPSM_PDA_MASK) << RSWITCH_RMAC_MPSM_PDA_SHIFT;
+
+	}
+	val |= RSWITCH_RMAC_MPSM_PSME;
+
+	printk("{%s:%d} val=0x%08X\n", __func__, __LINE__, val);
+
+	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPSM;
+	eth_rswitch_write(global_dev, base_offset, val);
+	printk("{%s:%d} APRES MPSM=0x%08X MPIC=0x%08X\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+	if (eth_rswitch_busy_wait(global_dev, base_offset,
+		RSWITCH_RMAC_MPSM_PSME_MASK << RSWITCH_RMAC_MPSM_PSME_SHIFT, 0) != 0) {
+		LOG_ERR("Failed to transmit the MDIO read frame for device %s "
+			"(prtad=0x%X, regad=0x%X, devad=0x%X, is_c45=%d).",
+			dev->name, prtad, regad, devad, is_c45);
+		printk("{%s:%d} FAILED MPSM=0x%08X MPIC=0x%08X\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+		return -EIO;
+	}
+
+printk("\033[32m{%s:%d} FIN OK MPSM=0x%08X MPIC=0x%08X\033[0m\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+
+	return 0;
+}
+
+int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t prtad, uint8_t regad,
 			      uint16_t *data)
 {
-	const struct eth_rswitch_port_config *port_config = dev->config;
+	/*const struct eth_rswitch_tsn_config *tsn_config = dev->config;
+	const struct device *global_dev = tsn_config->global_dev;
+	uint32_t val;
 
 	// TEST
-	int ret;
+	int ret;*/
 
 	// TEST
 	//LOG_WRN("AVANT EAMC=%d, EAMS=%d", eth_rswitch_read(port_config->global_dev, port_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(port_config->global_dev, port_config->tsna_offset + RSWITCH_TSNA_EAMS));
@@ -230,9 +294,7 @@ int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t prtad, uint8_t d
 
 	//LOG_ERR("MERDE ALORS");
 
-
-
-	return 0;
+	return eth_rswitch_mdio_read(dev, prtad, regad, 0, data, 0);
 }
 
 static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *state,
@@ -272,9 +334,14 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 	}
 	eth_rswitch_write(global_dev, base_offset, val);
 
-	// TODO if inutile
-	if (eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_DISABLE) != 0) {
-		return;
+	// TODO possible version finale
+	if (state->is_up) {
+		eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
+	}
+	else {
+		//eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_DISABLE);
+		// TEST pour le moment
+		eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
 	}
 
 	printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
