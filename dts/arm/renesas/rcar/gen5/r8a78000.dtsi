@@ -232,6 +232,17 @@
 			clocks = <&scmi_clk R8A78000_CLK_I2C8>;
 		};
 
+		pwm0: pwm@c0740000 {
+			clocks = <&scmi_clk R8A78000_CLK_PWM0>, /* Mod clk */
+				 <&scmi_clk R8A78000_CLK_SGAD16_PERW_M>; /* Counter clk */
+		};
+
+		/* The firmware has a single PWM module clock, shared by both controllers */
+		pwm4: pwm@c0780000 {
+			clocks = <&scmi_clk R8A78000_CLK_PWM0>, /* Mod clk */
+				 <&scmi_clk R8A78000_CLK_S0AD8_PERW_M>; /* Counter clk */
+		};
+
 		can0_global: can0-global@c1420000 {
 			clocks = <&scmi_clk R8A78000_CLK_CANFD_SCP_MAIN>,
 				 <&scmi_clk R8A78000_CLK_CANFD0>;

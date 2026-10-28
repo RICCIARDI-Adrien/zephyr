@@ -352,6 +352,22 @@
 			status = "disabled";
 		};
 
+		/* PWM0 to PWM3 are channels 0 to 3 */
+		pwm0: pwm@c0740000 {
+			compatible = "renesas,pwm-rcar5";
+			reg = <0xc0740000 0x4000>;
+			#pwm-cells = <3>;
+			status = "disabled";
+		};
+
+		/* PWM4 to PWM9 are channels 0 to 5 */
+		pwm4: pwm@c0780000 {
+			compatible = "renesas,pwm-rcar5";
+			reg = <0xc0780000 0x6000>;
+			#pwm-cells = <3>;
+			status = "disabled";
+		};
+
 		can0_global: can0-global@c1420000 {
 			compatible = "renesas,rcar-rscanfd-global";
 			reg = <0xc1420000 0x20000>;
