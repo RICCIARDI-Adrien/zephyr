@@ -115,6 +115,12 @@
 	};
 };
 
+&pwm0 {
+	pinctrl-0 = <&pwm3_default>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
 &can0_global {
 	status = "okay";
 };
