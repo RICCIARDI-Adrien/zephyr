@@ -23,7 +23,13 @@ struct eth_rswitch_port_config {
 
 #include <zephyr/device.h>
 
-int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t port_address, uint8_t reg_address,
-			      uint16_t *data);
+/*int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t port_address, uint8_t reg_address,
+			      uint16_t *data);*/
+
+int eth_rswitch_mdio_read(const struct device *tsn_dev, uint8_t prtad, uint16_t regad,
+			  uint8_t devad, uint16_t *data, bool is_c45);
+
+int eth_rswitch_mdio_write(const struct device *tsn_dev, uint8_t prtad, uint8_t regad,
+			   uint8_t devad, uint16_t data, bool is_c45);
 
 #endif /* ZEPHYR_DRIVERS_ETH_RENESAS_RCAR_RSWITCH_PRIV_H_ */

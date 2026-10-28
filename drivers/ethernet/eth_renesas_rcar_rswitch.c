@@ -233,10 +233,10 @@ printk("op mode APRES EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_conf
 	return 0;
 }
 
-static int eth_rswitch_mdio_read(const struct device *dev, uint8_t prtad, uint16_t regad,
-				 uint8_t devad, uint16_t *data, bool is_c45)
+int eth_rswitch_mdio_read(const struct device *tsn_dev, uint8_t prtad, uint16_t regad,
+			  uint8_t devad, uint16_t *data, bool is_c45)
 {
-	const struct eth_rswitch_tsn_config *tsn_config = dev->config;
+	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
 	const struct device *global_dev = tsn_config->global_dev;
 	uint32_t val = 0, base_offset;
 
@@ -258,15 +258,11 @@ static int eth_rswitch_mdio_read(const struct device *dev, uint8_t prtad, uint16
 
 	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPSM;
 	eth_rswitch_write(global_dev, base_offset, val);
-	//val |= RSWITCH_RMAC_MPSM_PSME;
-	//eth_rswitch_write(global_dev, base_offset, val);
-	//printk("{%s:%d} APRES MPSM=0x%08X MPIC=0x%08X\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
 	if (eth_rswitch_busy_wait(global_dev, base_offset,
 		RSWITCH_RMAC_MPSM_PSME_MASK << RSWITCH_RMAC_MPSM_PSME_SHIFT, 0) != 0) {
 		LOG_ERR("Failed to transmit the MDIO read frame for device %s "
 			"(prtad=0x%X, regad=0x%X, devad=0x%X, is_c45=%d).",
-			dev->name, prtad, regad, devad, is_c45);
-		printk("{%s:%d} FAILED MPSM=0x%08X MPIC=0x%08X\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+			tsn_dev->name, prtad, regad, devad, is_c45);
 		return -EIO;
 	}
 
@@ -279,6 +275,40 @@ static int eth_rswitch_mdio_read(const struct device *dev, uint8_t prtad, uint16
 	return 0;
 }
 
+int eth_rswitch_mdio_write(const struct device *tsn_dev, uint8_t prtad, uint8_t regad,
+			   uint8_t devad, uint16_t data, bool is_c45)
+{
+	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
+	const struct device *global_dev = tsn_config->global_dev;
+	uint32_t val = 0, base_offset;
+
+	/* Clause 45 frame format */
+	if (is_c45) {
+	}
+	/* Clause 22 frame format */
+	else {
+		val = RSWITCH_RMAC_MPSM_POP_C22_WRITE << RSWITCH_RMAC_MPSM_POP_SHIFT |
+			(regad & RSWITCH_RMAC_MPSM_PRA_MASK) << RSWITCH_RMAC_MPSM_PRA_SHIFT |
+			(prtad & RSWITCH_RMAC_MPSM_PDA_MASK) << RSWITCH_RMAC_MPSM_PDA_SHIFT |
+			data << RSWITCH_RMAC_MPSM_PRD_SHIFT;
+
+	}
+	val |= RSWITCH_RMAC_MPSM_PSME;
+
+	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPSM;
+	eth_rswitch_write(global_dev, base_offset, val);
+	if (eth_rswitch_busy_wait(global_dev, base_offset,
+		RSWITCH_RMAC_MPSM_PSME_MASK << RSWITCH_RMAC_MPSM_PSME_SHIFT, 0) != 0) {
+		LOG_ERR("Failed to transmit the MDIO read frame for device %s "
+			"(prtad=0x%X, regad=0x%X, devad=0x%X, is_c45=%d).",
+			tsn_dev->name, prtad, regad, devad, is_c45);
+		return -EIO;
+	}
+
+	return 0;
+}
+
+#if 0
 int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t prtad, uint8_t regad,
 			      uint16_t *data)
 {
@@ -303,6 +333,7 @@ int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t prtad, uint8_t r
 
 	return eth_rswitch_mdio_read(dev, prtad, regad, 0, data, 0);
 }
+#endif
 
 static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *state,
 			       void *user_data)
@@ -382,7 +413,7 @@ printk("eth_rswitch_phy_cb %sRATE=%u\n", tsn_dev->name, val);*/
 		eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
 	}
 
-	//printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+	printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X, val=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC), val);
 }
 
 static void eth_rswitch_iface_init(struct net_if *iface)

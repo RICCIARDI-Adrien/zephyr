@@ -21,22 +21,24 @@ struct mdio_rswitch_config {
 static int mdio_rswitch_c22_read(const struct device *dev, uint8_t prtad, uint8_t devad,
 				 uint16_t *data)
 {
+	const struct mdio_rswitch_config *config = dev->config;
+
 	// TEST
 	LOG_ERR("mdio_rswitch_c22_read prtad=%d, devad=%d", prtad, devad);
 
-	const struct mdio_rswitch_config *config = dev->config;
-
-	return eth_rswitch_mdio_c22_read(config->tsn_dev, prtad, devad, data);
+	//return eth_rswitch_mdio_c22_read(config->tsn_dev, prtad, devad, data);
+	return eth_rswitch_mdio_read(config->tsn_dev, prtad, devad, 0, data, 0);
 }
 
 static int mdio_rswitch_c22_write(const struct device *dev, uint8_t prtad, uint8_t devad,
 				  uint16_t data)
 {
-	/*const struct mdio_lan865x_config *const cfg = dev->config;
+	const struct mdio_rswitch_config *config = dev->config;
 
-	return eth_lan865x_mdio_c22_write(cfg->dev, prtad, regad, data);*/
-	LOG_ERR("mdio_rswitch_c22_read MERDE");
-	return 0;
+	// TEST
+	LOG_ERR("mdio_rswitch_c22_write prtad=%d, devad=%d, data=0x%04X", prtad, devad, data);
+
+	return eth_rswitch_mdio_write(config->tsn_dev, prtad, devad, 0, data, 0);
 }
 
 static DEVICE_API(mdio, mdio_rswitch_api) = {
