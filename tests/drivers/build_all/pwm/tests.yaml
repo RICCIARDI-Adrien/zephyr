@@ -39,6 +39,8 @@ tests:
   drivers.pwm.pca9685.build:
     platform_allow: nrf52840dk/nrf52840
     extra_args: SHIELD=adafruit_pca9685
+  drivers.pwm.rcar5.build:
+    platform_allow: rcar_ironhide_x5h/r8a78000/r52
   drivers.pwm.sam0.tcc.build:
     platform_allow: same54_xpro
   drivers.pwm.build.sam:
