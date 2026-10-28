@@ -10,4 +10,5 @@ supported:
   - clock_control
   - gpio
   - i2c
+  - pwm
   - uart
