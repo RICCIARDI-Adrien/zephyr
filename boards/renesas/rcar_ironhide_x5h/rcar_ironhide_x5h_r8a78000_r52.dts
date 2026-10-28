@@ -325,6 +325,7 @@
 &rswitch_tsn4 {
 	local-mac-address = [FA DA CA CA BA 04];
 	phy-handle = <&rswitch_phy4>;
+	phy-connection-type = "gmii";
 	status = "okay";
 };
 

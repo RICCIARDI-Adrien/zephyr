@@ -77,6 +77,7 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 #define RSWITCH_RMAC_MPIC_PSMCT_SHIFT 28
 #define RSWITCH_RMAC_MPIC_PSMHT_MASK 0x0000000F
 #define RSWITCH_RMAC_MPIC_PSMHT_SHIFT 24
+#define RSWITCH_RMAC_MPIC_PSMHT_DEFAULT_HOLD_TIME 6
 #define RSWITCH_RMAC_MPIC_PSMCS_MASK 0x000000FF
 #define RSWITCH_RMAC_MPIC_PSMCS_SHIFT 13
 #define RSWITCH_RMAC_MPIC_PLSPP BIT(10)
@@ -91,7 +92,9 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 #define RSWITCH_RMAC_MPIC_LSC_10_GBPS 0x5
 #define RSWITCH_RMAC_MPIC_PIS_MASK 0x00000007
 #define RSWITCH_RMAC_MPIC_PIS_SHIFT 0
-#define RSWITCH_RMAC_MPIC_PIS_GMII 0x2
+#define RSWITCH_RMAC_MPIC_PIS_MII 0
+#define RSWITCH_RMAC_MPIC_PIS_GMII 2
+#define RSWITCH_RMAC_MPIC_PIS_XGMII 4
 
 #define RSWITCH_TSN_COUNT 13
 
@@ -116,14 +119,11 @@ struct eth_rswitch_data {
 	DEVICE_MMIO_RAM;
 };
 
-// TODO virer
-struct eth_rswitch_port_config {
-	int id;
-	uint32_t tsna_offset; /* Specific to this port */
-	uint32_t rmac_offset; /* Specific to this port */
-	struct net_eth_mac_config mac_config;
-	clock_control_subsys_t tsn_clk;
-	const struct device *global_dev;
+enum eth_rswitch_phy_mode {
+	ETH_RSWITCH_PHY_MODE_MII,
+	ETH_RSWITCH_PHY_MODE_GMII,
+	ETH_RSWITCH_PHY_MODE_XGMII,
+	ETH_RSWITCH_PHY_MODE_INVALID
 };
 
 struct eth_rswitch_tsn_config {
@@ -134,6 +134,7 @@ struct eth_rswitch_tsn_config {
 	clock_control_subsys_t tsnes_clk;
 	const struct device *global_dev;
 	const struct device *phy_dev;
+	enum eth_rswitch_phy_mode phy_mode;
 };
 
 struct eth_rswitch_tsn_data {
@@ -239,7 +240,7 @@ static int eth_rswitch_mdio_read(const struct device *dev, uint8_t prtad, uint16
 	const struct device *global_dev = tsn_config->global_dev;
 	uint32_t val = 0, base_offset;
 
-	printk("{%s:%d} AVANT MPSM=0x%08X MPIC=0x%08X\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+	//printk("{%s:%d} AVANT MPSM=0x%08X MPIC=0x%08X\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
 
 	/* Clause 45 frame format */
 	if (is_c45) {
@@ -248,16 +249,18 @@ static int eth_rswitch_mdio_read(const struct device *dev, uint8_t prtad, uint16
 	else {
 		val = RSWITCH_RMAC_MPSM_POP_C22_READ << RSWITCH_RMAC_MPSM_POP_SHIFT |
 			(regad & RSWITCH_RMAC_MPSM_PRA_MASK) << RSWITCH_RMAC_MPSM_PRA_SHIFT |
-			(devad & RSWITCH_RMAC_MPSM_PDA_MASK) << RSWITCH_RMAC_MPSM_PDA_SHIFT;
+			(prtad & RSWITCH_RMAC_MPSM_PDA_MASK) << RSWITCH_RMAC_MPSM_PDA_SHIFT;
 
 	}
 	val |= RSWITCH_RMAC_MPSM_PSME;
 
-	printk("{%s:%d} val=0x%08X\n", __func__, __LINE__, val);
+	//printk("{%s:%d} val=0x%08X\n", __func__, __LINE__, val);
 
 	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPSM;
 	eth_rswitch_write(global_dev, base_offset, val);
-	printk("{%s:%d} APRES MPSM=0x%08X MPIC=0x%08X\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+	//val |= RSWITCH_RMAC_MPSM_PSME;
+	//eth_rswitch_write(global_dev, base_offset, val);
+	//printk("{%s:%d} APRES MPSM=0x%08X MPIC=0x%08X\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
 	if (eth_rswitch_busy_wait(global_dev, base_offset,
 		RSWITCH_RMAC_MPSM_PSME_MASK << RSWITCH_RMAC_MPSM_PSME_SHIFT, 0) != 0) {
 		LOG_ERR("Failed to transmit the MDIO read frame for device %s "
@@ -267,7 +270,11 @@ static int eth_rswitch_mdio_read(const struct device *dev, uint8_t prtad, uint16
 		return -EIO;
 	}
 
-printk("\033[32m{%s:%d} FIN OK MPSM=0x%08X MPIC=0x%08X\033[0m\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+	/* Retrieve the register data */
+	val = eth_rswitch_read(global_dev, base_offset);
+	*data = (val >> RSWITCH_RMAC_MPSM_PRD_SHIFT) & RSWITCH_RMAC_MPSM_PRD_MASK;
+
+//printk("\033[32m{%s:%d} FIN OK MPSM=0x%08X MPIC=0x%08X\033[0m\n", __func__, __LINE__, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPSM), eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
 
 	return 0;
 }
@@ -303,19 +310,50 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 	const struct device *tsn_dev = user_data;
 	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
 	const struct device *global_dev = tsn_config->global_dev;
+	const struct eth_rswitch_config *global_config = global_dev->config;
 	uint32_t base_offset, val;
+	int ret;
 	//struct eth_rswitch_tsn_data *tsn_data = tsn_dev->data;
 
-	printk("eth_rswitch_phy_cb %s\n MPIC avant=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+	//printk("eth_rswitch_phy_cb %s\n MPIC avant=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
 
 	/* The MPIC register can only be written in Configuration mode */
 	if (eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_CONFIG) != 0) {
 		return;
 	}
 
+	/*ret = clock_control_get_rate(global_config->clock_dev, tsn_config->tsnes_clk, &val);
+	if (ret < 0) {
+		LOG_ERR("Failed to get the TSN clock rate for device %s (%d).",
+			tsn_dev->name, ret);
+		return;
+	}
+
+printk("eth_rswitch_phy_cb %sRATE=%u\n", tsn_dev->name, val);*/
+
 	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPIC;
-	val = (RSWITCH_RMAC_MPIC_PIS_GMII << RSWITCH_RMAC_MPIC_PIS_SHIFT) |
-		1023 << RSWITCH_RMAC_MPIC_PSMCS_SHIFT; // TEST
+
+	// TODO définir fréquence clock en fonction du mode
+	switch (tsn_config->phy_mode) {
+	case ETH_RSWITCH_PHY_MODE_MII:
+		val = RSWITCH_RMAC_MPIC_PIS_MII;
+		break;
+	case ETH_RSWITCH_PHY_MODE_GMII:
+		val = RSWITCH_RMAC_MPIC_PIS_GMII;
+		break;
+	case ETH_RSWITCH_PHY_MODE_XGMII:
+		val = RSWITCH_RMAC_MPIC_PIS_XGMII;
+		break;
+	default:
+		LOG_ERR("Unsupported PHY mode for device %s.", tsn_dev->name);
+		return;
+	}
+	val <<= RSWITCH_RMAC_MPIC_PIS_SHIFT;
+
+	// TODO récupération rate clock ne fonctionne pas
+	val |= 256UL << RSWITCH_RMAC_MPIC_PSMCS_SHIFT;
+
+	val |= RSWITCH_RMAC_MPIC_PSMHT_DEFAULT_HOLD_TIME << RSWITCH_RMAC_MPIC_PSMHT_SHIFT;
 
 	if (PHY_LINK_IS_SPEED_1000M(state->speed)) {
 		val |= RSWITCH_RMAC_MPIC_LSC_1_GBPS << RSWITCH_RMAC_MPIC_LSC_SHIFT;
@@ -344,7 +382,7 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 		eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
 	}
 
-	printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+	//printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
 }
 
 static void eth_rswitch_iface_init(struct net_if *iface)
@@ -479,6 +517,12 @@ static int eth_rswitch_device_init(const struct device *dev)
  */
 #define DT_DRV_COMPAT renesas_rcar_rswitch_tsn
 
+#define ETH_RSWITCH_GET_PHY_MODE(node_id) \
+	DT_ENUM_HAS_VALUE(node_id, phy_connection_type, mii) ? ETH_RSWITCH_PHY_MODE_MII : \
+	(DT_ENUM_HAS_VALUE(node_id, phy_connection_type, gmii) ? ETH_RSWITCH_PHY_MODE_GMII : \
+	(DT_ENUM_HAS_VALUE(node_id, phy_connection_type, xgmii) ? ETH_RSWITCH_PHY_MODE_XGMII : \
+	ETH_RSWITCH_PHY_MODE_INVALID))
+
 #define ETH_RSWITCH_TSN_INIT(inst) \
 	static const struct eth_rswitch_tsn_config eth_rswitch_tsn_config_##inst = { \
 		.id = DT_INST_PROP(inst, id), \
@@ -490,7 +534,8 @@ static int eth_rswitch_device_init(const struct device *dev)
 		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(DT_INST(inst, DT_DRV_COMPAT)), \
 		.tsnes_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, name), \
 		.global_dev = DEVICE_DT_GET(DT_INST_PARENT(inst)), \
-		.phy_dev = DEVICE_DT_GET(DT_INST_PHANDLE(inst, phy_handle)) \
+		.phy_dev = DEVICE_DT_GET(DT_INST_PHANDLE(inst, phy_handle)), \
+		.phy_mode = ETH_RSWITCH_GET_PHY_MODE(DT_DRV_INST(inst)) \
 	}; \
 \
 	static struct eth_rswitch_tsn_data eth_rswitch_tsn_data_##inst; \

@@ -16,7 +16,7 @@ properties:
     description: |
       TODO s'inspirer de CAN
 
-  # TODO peut-etre
+  # TODO déjà défini dans ethernet-controller, utile de le redéfinir ?
   phy-handle:
     type: phandle
     description: Specify a reference to a node representing a PHY device.
@@ -24,3 +24,6 @@ properties:
   local-mac-address:
     type: uint8-array
     description: Specify the MAC address that is assigned to the Ethernet controller port.
+
+  phy-connection-type:
+    required: true
