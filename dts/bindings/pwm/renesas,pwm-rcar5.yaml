@@ -1,0 +1,35 @@
+# Copyright (c) 2026 BayLibre, SAS
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Renesas R-Car Gen5 PWM controller.
+
+  Each channel has 0x1000 bytes of registers, so the number of channels is
+  the size of reg divided by 0x1000. The controller at 0xc0740000 holds PWM0
+  to PWM3 and the one at 0xc0780000 holds PWM4 to PWM9.
+
+  A stopped channel stays high, so a 100% duty cycle works, but 0% and
+  inverted polarity are not supported.
+
+compatible: "renesas,pwm-rcar5"
+
+include: [pwm-controller.yaml, base.yaml, pinctrl-device.yaml]
+
+properties:
+  reg:
+    required: true
+
+  clocks:
+    required: true
+    description: |
+      The module clock first, then the counter clock that sets the PWM
+      frequency.
+
+  "#pwm-cells":
+    const: 3
+
+pwm-cells:
+  - channel
+  # period in terms of nanoseconds
+  - period
+  - flags
