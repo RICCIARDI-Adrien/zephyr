@@ -90,6 +90,10 @@
 		pin = <PIN_SDA5 FUNC_SDA5>;
 	};
 
+	pwm3_default: pwm3_default {
+		pin = <PIN_TCLK4 FUNC_PWM3>;
+	};
+
 	can0_rx_default: can0_rx_default {
 		pin = <PIN_CAN0RX_INTP0 FUNC_CAN0RX_INTP0>;
 	};

@@ -1,0 +1,12 @@
+# Renesas R-Car Gen5 PWM configuration options
+
+# Copyright (c) 2026 BayLibre, SAS
+# SPDX-License-Identifier: Apache-2.0
+
+config PWM_RCAR5
+	bool "Renesas R-Car Gen5 PWM driver"
+	default y
+	depends on DT_HAS_RENESAS_PWM_RCAR5_ENABLED
+	select PINCTRL
+	help
+	  Enable the PWM driver for Renesas R-Car Gen5 SoCs.
