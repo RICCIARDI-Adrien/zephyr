@@ -1,7 +1,16 @@
 # Copyright (c) 2022, IoT.bzh
 # SPDX-License-Identifier: Apache-2.0
 
-description: Renesas R-Car PWM controller
+description: |
+  Renesas R-Car PWM controller.
+
+  On Gen5, each channel has 0x1000 bytes of registers, so the number of
+  channels is the size of reg divided by 0x1000. The controller at 0xc0740000
+  holds PWM0 to PWM3 and the one at 0xc0780000 holds PWM4 to PWM9. The first
+  clock is the module clock and the second one is the counter clock.
+
+  A stopped Gen5 channel stays high, so a 100% duty cycle works, but 0% and
+  inverted polarity are not supported.
 
 compatible: "renesas,pwm-rcar"
 
