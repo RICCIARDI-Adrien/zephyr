@@ -41,11 +41,29 @@ static int mdio_rswitch_c22_write(const struct device *dev, uint8_t prtad, uint8
 	return eth_rswitch_mdio_write(config->tsn_dev, prtad, devad, 0, data, 0);
 }
 
+static int mdio_rswitch_c45_read(const struct device *dev, uint8_t prtad, uint8_t devad,
+				 uint16_t regad, uint16_t *data)
+{
+	// TEST
+	LOG_ERR("mdio_rswitch_c45_write prtad=%d, devad=%d, regad=0x%04X", prtad, devad, regad);
+
+	return -ENOSYS;
+}
+
+static int mdio_rswitch_c45_write(const struct device *dev, uint8_t prtad, uint8_t devad,
+				  uint16_t regad, uint16_t data)
+{
+	// TEST
+	LOG_ERR("mdio_rswitch_c22_write prtad=%d, devad=%d, regad=0x%04X, data=0x%04X", prtad, devad, regad, data);
+
+	return -ENOSYS;
+}
+
 static DEVICE_API(mdio, mdio_rswitch_api) = {
 	.read = mdio_rswitch_c22_read,
 	.write = mdio_rswitch_c22_write,
-	/*.read_c45 = mdio_rswitch_c45_read,
-	.write_c45 = mdio_rswitch_c45_write*/
+	.read_c45 = mdio_rswitch_c45_read,
+	.write_c45 = mdio_rswitch_c45_write
 };
 
 static int mdio_rswitch_init(const struct device *dev)

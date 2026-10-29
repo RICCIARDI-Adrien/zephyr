@@ -349,7 +349,6 @@
 };
 
 &rswitch_mdio4 {
-	// TODO TEST
 	pinctrl-0 = <&rswitch_etha4_phyint_default
 		     &rswitch_etha4_link_default
 		     &rswitch_etha4_mdc_default
@@ -357,12 +356,10 @@
 	pinctrl-names = "default";
 	status = "okay";
 
-	// TODO test avec 3 pour ne pas écrire sur le vrai PHY
-	//ethernet-phy@2 {
-	rswitch_phy4: ethernet-phy@4 {
-		compatible = "ethernet-phy"; // TEST
-		//reg = <2>;
-		reg = <4>;
+	rswitch_phy4: ethernet-phy@2 {
+		compatible = "ti,dp83867";
+		reg = <2>;
+		ti,interface-type = "gmii";
 		default-speeds = "1000BASE Full-Duplex";
 		status = "okay";
 	};

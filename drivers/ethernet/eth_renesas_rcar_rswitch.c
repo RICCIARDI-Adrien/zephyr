@@ -207,9 +207,8 @@ static int eth_rswitch_set_operating_mode(const struct device *tsn_dev,
 			RSWITCH_OPERATING_MODE_DISABLE);
 		if (eth_rswitch_busy_wait(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS,
 			RSWITCH_TSNA_EAMS_OPS_MASK, RSWITCH_OPERATING_MODE_DISABLE) != 0) {
-			LOG_ERR("Failed to set the Disable operating mode for %s.\n",
-				tsn_dev->name);
-			__ASSERT_NO_MSG(0);
+			LOG_ERR("Failed to set the Disable operating mode for %s.", tsn_dev->name);
+			//__ASSERT_NO_MSG(0);
 			return -EIO;
 		}
 	}
@@ -221,7 +220,7 @@ static int eth_rswitch_set_operating_mode(const struct device *tsn_dev,
 	if (eth_rswitch_busy_wait(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS,
 		RSWITCH_TSNA_EAMS_OPS_MASK, mode) != 0) {
 		LOG_ERR("Failed to set the %d operating mode for %s.\n", mode, tsn_dev->name);
-		__ASSERT_NO_MSG(0);
+		//__ASSERT_NO_MSG(0);
 		return -EIO;
 	}
 
@@ -308,33 +307,6 @@ int eth_rswitch_mdio_write(const struct device *tsn_dev, uint8_t prtad, uint8_t 
 	return 0;
 }
 
-#if 0
-int eth_rswitch_mdio_c22_read(const struct device *dev, uint8_t prtad, uint8_t regad,
-			      uint16_t *data)
-{
-	/*const struct eth_rswitch_tsn_config *tsn_config = dev->config;
-	const struct device *global_dev = tsn_config->global_dev;
-	uint32_t val;
-
-	// TEST
-	int ret;*/
-
-	// TEST
-	//LOG_WRN("AVANT EAMC=%d, EAMS=%d", eth_rswitch_read(port_config->global_dev, port_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(port_config->global_dev, port_config->tsna_offset + RSWITCH_TSNA_EAMS));
-
-	/*eth_rswitch_write(dev, port_config->tsna_offset + RSWITCH_TSNA_EAMC, RSWITCH_TSNA_EAMC_OPC_CONFIG);
-	LOG_WRN("APRES ecriture EAMC EAMC=%d, EAMS=%d", eth_rswitch_read(dev, port_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(dev, port_config->tsna_offset + RSWITCH_TSNA_EAMS));
-
-	ret = eth_rswitch_busy_wait(DEVICE_MMIO_GET(dev) + port_config->tsna_offset + RSWITCH_TSNA_EAMS,
-		RSWITCH_TSNA_EAMS_OPS_MASK, RSWITCH_TSNA_EAMS_OPS_CONFIG);
-	LOG_WRN("APRES busywait ret=%d", ret);*/
-
-	//LOG_ERR("MERDE ALORS");
-
-	return eth_rswitch_mdio_read(dev, prtad, regad, 0, data, 0);
-}
-#endif
-
 static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *state,
 			       void *user_data)
 {
@@ -346,7 +318,7 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 	int ret;
 	//struct eth_rswitch_tsn_data *tsn_data = tsn_dev->data;
 
-	//printk("eth_rswitch_phy_cb %s\n MPIC avant=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+	printk("eth_rswitch_phy_cb %s\n MPIC avant=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
 
 	/* The MPIC register can only be written in Configuration mode */
 	if (eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_CONFIG) != 0) {
@@ -382,7 +354,7 @@ printk("eth_rswitch_phy_cb %sRATE=%u\n", tsn_dev->name, val);*/
 	val <<= RSWITCH_RMAC_MPIC_PIS_SHIFT;
 
 	// TODO récupération rate clock ne fonctionne pas
-	val |= 256UL << RSWITCH_RMAC_MPIC_PSMCS_SHIFT;
+	val |= 256UL << RSWITCH_RMAC_MPIC_PSMCS_SHIFT; // TODO attention champs little endian
 
 	val |= RSWITCH_RMAC_MPIC_PSMHT_DEFAULT_HOLD_TIME << RSWITCH_RMAC_MPIC_PSMHT_SHIFT;
 
@@ -397,9 +369,7 @@ printk("eth_rswitch_phy_cb %sRATE=%u\n", tsn_dev->name, val);*/
 	}
 	else {
 		LOG_ERR("Unsupported link speed 0x%X.", state->speed);
-		// TEST
-		//__ASSERT_NO_MSG(0);
-		//return;
+		return;
 	}
 	eth_rswitch_write(global_dev, base_offset, val);
 
@@ -408,9 +378,7 @@ printk("eth_rswitch_phy_cb %sRATE=%u\n", tsn_dev->name, val);*/
 		eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
 	}
 	else {
-		//eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_DISABLE);
-		// TEST pour le moment
-		eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
+		eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_DISABLE);
 	}
 
 	printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X, val=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC), val);
