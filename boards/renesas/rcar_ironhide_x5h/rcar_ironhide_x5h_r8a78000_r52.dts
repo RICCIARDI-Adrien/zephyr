@@ -322,18 +322,18 @@
 	status = "disabled";
 };
 
+&rswitch_tsn3 {
+	local-mac-address = [FA DA CA CA BA 05];
+	phy-handle = <&rswitch_phy3>;
+	//status = "okay";
+	status = "disabled";
+};
+
 &rswitch_tsn4 {
 	local-mac-address = [FA DA CA CA BA 04];
 	phy-handle = <&rswitch_phy4>;
 	phy-connection-type = "gmii";
 	status = "okay";
-};
-
-&rswitch_tsn5 {
-	local-mac-address = [FA DA CA CA BA 05];
-	phy-handle = <&rswitch_phy5>;
-	//status = "okay";
-	status = "disabled";
 };
 
 &rswitch_mdio0 {
@@ -344,6 +344,25 @@
 		compatible = "ethernet-phy";
 		reg = <9>;
 		default-speeds = "10BASE Half-Duplex";
+		status = "disabled";
+	};
+};
+
+&rswitch_mdio3 {
+	// TODO TEST
+	pinctrl-0 = <&rswitch_etha3_phyint_default
+		     &rswitch_etha3_link_default
+		     &rswitch_etha3_mdc_default
+		     &rswitch_etha3_mdio_default>;
+	pinctrl-names = "default";
+	//status = "okay";
+	status = "disabled";
+
+	rswitch_phy3: ethernet-phy@0 { // TEST avec fausse adresse
+		compatible = "ethernet-phy"; // TEST
+		reg = <0>;
+		default-speeds = "1000BASE Full-Duplex";
+		//status = "okay";
 		status = "disabled";
 	};
 };
@@ -362,27 +381,5 @@
 		ti,interface-type = "gmii";
 		default-speeds = "1000BASE Full-Duplex";
 		status = "okay";
-	};
-};
-
-&rswitch_mdio5 {
-	// TODO TEST
-	pinctrl-0 = <&rswitch_etha4_phyint_default
-		     &rswitch_etha4_link_default
-		     &rswitch_etha4_mdc_default
-		     &rswitch_etha4_mdio_default>;
-	pinctrl-names = "default";
-	//status = "okay";
-	status = "disabled";
-
-	// TODO test avec 3 pour ne pas écrire sur le vrai PHY
-	//ethernet-phy@2 {
-	rswitch_phy5: ethernet-phy@3 {
-		compatible = "ethernet-phy"; // TEST
-		//reg = <2>;
-		reg = <3>;
-		default-speeds = "1000BASE Full-Duplex";
-		//status = "okay";
-		status = "disabled";
 	};
 };

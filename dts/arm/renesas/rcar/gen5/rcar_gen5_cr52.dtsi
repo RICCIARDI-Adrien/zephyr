@@ -452,39 +452,44 @@
 			reg = <0xc9b80000 0x40000>; // TODO inclure range non secure ?
 			coma-reg-offset = <0x1C000>;
 			tsna-reg-base-offset = <0x1D000>;
+			tsna-count = <5>;
 			status = "disabled";
 			// TODO autres offsets
 
 			// TODO autres interfaces et MDIO
 			rswitch_tsn0: tsn0 {
 				compatible = "renesas,rcar-rswitch-tsn";
-				/*#address-cells = <1>;
-				#size-cells = <0>;*/
 				status = "disabled";
 
 				rswitch_mdio0: mdio0 {
 					compatible = "renesas,rcar-rswitch-mdio";
-					//reg = <0>;
 					#address-cells = <1>;
 					#size-cells = <0>;
 					status = "disabled";
-					// TODO GPIO
 				};
 			};
 
 			rswitch_tsn1: tsn1 {
 				compatible = "renesas,rcar-rswitch-tsn";
-				/*#address-cells = <1>;
-				#size-cells = <0>;*/
 				status = "disabled";
 
 				rswitch_mdio1: mdio1 {
 					compatible = "renesas,rcar-rswitch-mdio";
-					//reg = <1>;
 					#address-cells = <1>;
 					#size-cells = <0>;
 					status = "disabled";
-					// TODO GPIO
+				};
+			};
+
+			rswitch_tsn3: tsn3 {
+				compatible = "renesas,rcar-rswitch-tsn";
+				status = "disabled";
+
+				rswitch_mdio3: mdio3 {
+					compatible = "renesas,rcar-rswitch-mdio";
+					#address-cells = <1>;
+					#size-cells = <0>;
+					status = "disabled";
 				};
 			};
 
@@ -497,22 +502,6 @@
 					#address-cells = <1>;
 					#size-cells = <0>;
 					status = "disabled";
-				};
-			};
-
-			rswitch_tsn5: tsn5 {
-				compatible = "renesas,rcar-rswitch-tsn";
-				/*#address-cells = <1>;
-				#size-cells = <0>;*/
-				status = "disabled";
-
-				rswitch_mdio5: mdio5 {
-					compatible = "renesas,rcar-rswitch-mdio";
-					//reg = <5>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-					status = "disabled";
-					// TODO GPIO
 				};
 			};
 		};

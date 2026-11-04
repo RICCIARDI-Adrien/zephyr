@@ -24,8 +24,13 @@ properties:
     description: |
       TODO dire specifique a chaque port
 
-  ports:
-    type: array
+  tsna-count:
+    type: int
+    required: true
+    description: How many TSNA (ETHA) are provided by the hardware
+
+ # ports:
+ #   type: array
 
 child-binding:
   #child-binding:

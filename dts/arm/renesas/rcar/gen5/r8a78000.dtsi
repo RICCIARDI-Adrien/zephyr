@@ -344,25 +344,24 @@
 			//power-domains = <&ethernet_rswitch3_pd>;
 
 			rswitch_tsn0: tsn0 {
-				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES0>;
+				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES0>; // Clock inutile
 				id = <0>;
 			};
 
 			rswitch_tsn1: tsn1 {
-				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES1>;
+				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES1>; // Clock inutile
 				id = <1>;
 			};
 
+			rswitch_tsn3: tsn3 {
+				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES3>; // Clock inutile
+				id = <3>;
+			};
+
 			rswitch_tsn4: tsn4 {
-				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES4>;
+				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES4>; // Clock inutile
 				id = <4>;
 			};
-
-			rswitch_tsn5: tsn5 {
-				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES5>;
-				id = <5>;
-			};
-
 				      // TEST
 			/*gmac0: ethernet {
 				compatible = "atmel,sam-gmac";

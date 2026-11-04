@@ -523,6 +523,9 @@ static int eth_rswitch_device_init(const struct device *dev)
 	ETH_RSWITCH_PHY_MODE_INVALID))
 
 #define ETH_RSWITCH_TSN_INIT(inst) \
+	BUILD_ASSERT(DT_INST_PROP(inst, id) < DT_PROP(DT_INST_PARENT(inst), tsna_count), \
+		"Invalid TSN ID, must be lesser than the tsna-count property value." ); \
+\
 	static const struct eth_rswitch_tsn_config eth_rswitch_tsn_config_##inst = { \
 		.id = DT_INST_PROP(inst, id), \
 		.tsna_offset = DT_PROP(DT_INST_PARENT(inst), tsna_reg_base_offset) \
@@ -541,45 +544,7 @@ static int eth_rswitch_device_init(const struct device *dev)
 \
 	ETH_NET_DEVICE_DT_INST_DEFINE(inst, NULL, NULL, &eth_rswitch_tsn_data_##inst, &eth_rswitch_tsn_config_##inst, CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
 
-#if 0
-	ETH_NET_DEVICE_INIT_INSTANCE(rswitch_tsn_##inst, "eth" STRINGIFY(DT_INST_PROP(inst, id)), DT_INST_PROP(inst, id), \
-		NULL, NULL, \
-		NULL, /* TODO data */ \
-		&eth_rswitch_tsn_config_##inst, \
-		CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
-#endif
-
 DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH_TSN_INIT);
-
-// TODO virer si inutile
-#if 0
-#define ETH_RSWITCH_PORT_DEVICE_INIT(inst, n, port_id, clock) \
-	static const struct eth_rswitch_port_config eth_rswitch_port_config_##port_id = { \
-		.id = port_id, \
-		.tsna_offset = DT_INST_PROP(inst, tsna_reg_base_offset) \
-			+ port_id * (RSWITCH_TSNA_AREA_SIZE + RSWITCH_RMAC_AREA_SIZE), \
-		.rmac_offset = DT_INST_PROP(inst, tsna_reg_base_offset) \
-			+ port_id * (RSWITCH_TSNA_AREA_SIZE + RSWITCH_RMAC_AREA_SIZE) \
-			+ RSWITCH_TSNA_AREA_SIZE, \
-		.mac_config = NET_ETH_MAC_DT_CONFIG_INIT(n), /*DT_PROP(DT_INST_CHILD(n, port##port_id), local_mac_address)*/ \
-		.tsn_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, clock, name), \
-		.global_dev = DEVICE_DT_GET(DT_DRV_INST(inst)) \
-	}; \
-\
-	ETH_NET_DEVICE_INIT_INSTANCE(rswitch_port_##port_id, "eth" STRINGIFY(port_id), port_id, \
-		NULL, NULL, \
-		NULL, /* TODO data */ \
-		&eth_rswitch_port_config_##port_id, \
-		CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
-
-// TODO virer si inutile
-#define ETH_RSWITCH_DETECT_PORT(inst, port_id, clock) \
-	COND_CODE_1(DT_NODE_EXISTS(DT_INST_CHILD(inst, port##port_id)), \
-		(ETH_RSWITCH_PORT_DEVICE_INIT(inst, DT_INST_CHILD(inst, port##port_id), port_id, clock)), \
-		())
-
-		//(ETH_RSWITCH_PORT_DEVICE_INIT(DT_INST_CHILD(n, port##port_id))), ())
-#endif
 
 /*
  * The R-Switch global controller.
@@ -590,7 +555,6 @@ DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH_TSN_INIT);
 #define ETH_RSWITCH_INIT(inst) \
 	static const struct eth_rswitch_config eth_rswitch_config_##inst = { \
 		DEVICE_MMIO_ROM_INIT(DT_DRV_INST(inst)), \
-		/*.reg = DT_INST_REG_ADDR(inst), TODO utile ? */ \
 		.coma_offset = DT_INST_PROP(inst, coma_reg_offset), \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)), \
 		.rsw3_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3, name), \
