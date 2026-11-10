@@ -313,9 +313,9 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 	const struct device *tsn_dev = user_data;
 	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
 	const struct device *global_dev = tsn_config->global_dev;
-	const struct eth_rswitch_config *global_config = global_dev->config;
+	//const struct eth_rswitch_config *global_config = global_dev->config;
 	uint32_t base_offset, val;
-	int ret;
+	//int ret;
 	//struct eth_rswitch_tsn_data *tsn_data = tsn_dev->data;
 
 	printk("eth_rswitch_phy_cb %s\n MPIC avant=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
@@ -336,28 +336,9 @@ printk("eth_rswitch_phy_cb %sRATE=%u\n", tsn_dev->name, val);*/
 
 	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPIC;
 
-	// TODO définir fréquence clock en fonction du mode
-	switch (tsn_config->phy_mode) {
-	case ETH_RSWITCH_PHY_MODE_MII:
-		val = RSWITCH_RMAC_MPIC_PIS_MII;
-		break;
-	case ETH_RSWITCH_PHY_MODE_GMII:
-		val = RSWITCH_RMAC_MPIC_PIS_GMII;
-		break;
-	case ETH_RSWITCH_PHY_MODE_XGMII:
-		val = RSWITCH_RMAC_MPIC_PIS_XGMII;
-		break;
-	default:
-		LOG_ERR("Unsupported PHY mode for device %s.", tsn_dev->name);
-		return;
-	}
-	val <<= RSWITCH_RMAC_MPIC_PIS_SHIFT;
+	val = eth_rswitch_read(global_dev, base_offset);
 
-	// TODO récupération rate clock ne fonctionne pas
-	val |= 256UL << RSWITCH_RMAC_MPIC_PSMCS_SHIFT; // TODO attention champs little endian
-
-	val |= RSWITCH_RMAC_MPIC_PSMHT_DEFAULT_HOLD_TIME << RSWITCH_RMAC_MPIC_PSMHT_SHIFT;
-
+	val &= ~(RSWITCH_RMAC_MPIC_LSC_MASK << RSWITCH_RMAC_MPIC_LSC_SHIFT);
 	if (PHY_LINK_IS_SPEED_1000M(state->speed)) {
 		val |= RSWITCH_RMAC_MPIC_LSC_1_GBPS << RSWITCH_RMAC_MPIC_LSC_SHIFT;
 	}
@@ -379,28 +360,49 @@ printk("eth_rswitch_phy_cb %sRATE=%u\n", tsn_dev->name, val);*/
 	}
 	else {
 		eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_DISABLE);
+		// TEST
+		//eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
 	}
 
-	printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X, val=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC), val);
+	//printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X, val=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC), val);
 }
 
 static void eth_rswitch_iface_init(struct net_if *iface)
 {
-	const struct device *dev = net_if_get_device(iface);
-	const struct eth_rswitch_tsn_config *tsn_config = dev->config;
-	const struct device *global_dev = tsn_config->global_dev;
-	const struct eth_rswitch_config *global_config = global_dev->config;
+	const struct device *tsn_dev = net_if_get_device(iface);
+	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
 	int ret;
-	uint32_t base_offset, val;
 
 	// TODO
-	printk("INIT IFACE nom=%s, id=%d, tsnaoffs=0x%08X, rmacoffs=0x%08X\n", dev->name, tsn_config->id, tsn_config->tsna_offset, tsn_config->rmac_offset);
+	printk("INIT IFACE nom=%s, id=%d, tsnaoffs=0x%08X, rmacoffs=0x%08X\n", tsn_dev->name, tsn_config->id, tsn_config->tsna_offset, tsn_config->rmac_offset);
 	LOG_HEXDUMP_WRN(tsn_config->mac_config.addr, tsn_config->mac_config.addr_len, "MAC=");
 
-	if (clock_control_on(global_config->clock_dev, tsn_config->tsnes_clk) != 0) {
-		LOG_ERR("Failed to turn the tsn%d clock on.", tsn_config->id);
-		__ASSERT_NO_MSG(0);
+	net_if_set_link_addr(iface, tsn_config->mac_config.addr, tsn_config->mac_config.addr_len,
+		NET_LINK_ETHERNET);
+	ethernet_init(iface);
+	net_if_carrier_off(iface);
+
+	ret = phy_link_callback_set(tsn_config->phy_dev, eth_rswitch_phy_cb, (void *)tsn_dev);
+	if (ret != 0) {
+		LOG_ERR("Failed to register the PHY link callback for %s (%d).", tsn_dev->name, ret);
 		return;
+	}
+
+	LOG_DBG("Successfully initialized %s Ethernet interface.", tsn_dev->name);
+}
+
+static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
+{
+	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
+	const struct device *global_dev = tsn_config->global_dev;
+	const struct eth_rswitch_config *global_config = global_dev->config;
+	uint32_t base_offset, val;
+	int ret;
+
+	ret = clock_control_on(global_config->clock_dev, tsn_config->tsnes_clk);
+	if (ret != 0) {
+		LOG_ERR("Failed to turn the tsn%d clock on (%d).", tsn_config->id, ret);
+		return ret;
 	}
 
 	/* Enable the port clock */
@@ -409,39 +411,48 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 	val |= 1 << tsn_config->id;
 	eth_rswitch_write(global_dev, base_offset, val);
 
-#if 0
-printk("iface init AVANT EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
-
-	/* Switch the TSN to configuration mode (it is already in disable mode after reset) */
-	//base_addr = global_dev->
-	eth_rswitch_write(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC,
-		RSWITCH_TSNA_EAMC_OPC_CONFIG);
-	if (eth_rswitch_busy_wait(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS,
-		RSWITCH_TSNA_EAMS_OPS_MASK, RSWITCH_TSNA_EAMS_OPS_CONFIG) != 0) {
-		LOG_ERR("Failed to set the configuration mode for %s.\n", dev->name);
-		__ASSERT_NO_MSG(0);
-		return;
-	}
-
-printk("iface init APRES EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
-
-	/* Configure the PHY link */
-
-#endif
-
-	net_if_set_link_addr(iface, tsn_config->mac_config.addr, tsn_config->mac_config.addr_len,
-		NET_LINK_ETHERNET);
-	ethernet_init(iface);
-	net_if_carrier_off(iface);
-
-	ret = phy_link_callback_set(tsn_config->phy_dev, eth_rswitch_phy_cb, (void *)dev);
+	/* The MPIC register can only be written in Configuration mode */
+	ret = eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_CONFIG);
 	if (ret != 0) {
-		LOG_ERR("Failed to register the PHY link callback for %s (%d).", dev->name, ret);
-		__ASSERT_NO_MSG(0);
-		return;
+		LOG_ERR("Failed to switch %s to config mode (%d).", tsn_dev->name, ret);
+		return ret;
 	}
 
-	printk("INIT IFACE nom=%s OK\n", dev->name);
+	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPIC;
+
+	switch (tsn_config->phy_mode) {
+	case ETH_RSWITCH_PHY_MODE_MII:
+		val = RSWITCH_RMAC_MPIC_PIS_MII;
+		break;
+	case ETH_RSWITCH_PHY_MODE_GMII:
+		val = RSWITCH_RMAC_MPIC_PIS_GMII;
+		break;
+	case ETH_RSWITCH_PHY_MODE_XGMII:
+		val = RSWITCH_RMAC_MPIC_PIS_XGMII;
+		break;
+	default:
+		LOG_ERR("Unsupported PHY mode for device %s.", tsn_dev->name);
+		return -EINVAL;
+	}
+	val <<= RSWITCH_RMAC_MPIC_PIS_SHIFT;
+
+	// TODO récupération rate clock ne fonctionne pas
+	val |= 256UL << RSWITCH_RMAC_MPIC_PSMCS_SHIFT; // TODO attention champs little endian
+
+	val |= RSWITCH_RMAC_MPIC_PSMHT_DEFAULT_HOLD_TIME << RSWITCH_RMAC_MPIC_PSMHT_SHIFT;
+	eth_rswitch_write(global_dev, base_offset, val);
+
+	// TODO
+
+	ret = eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
+	if (ret != 0) {
+		LOG_ERR("Failed to switch %s to operating mode (%d).", tsn_dev->name, ret);
+		return ret;
+	}
+
+	LOG_DBG("Initialized %s TSN device.", tsn_dev->name);
+
+	return 0;
 }
 
 static const struct ethernet_api eth_rswitch_ethernet_api = {
@@ -542,7 +553,7 @@ static int eth_rswitch_device_init(const struct device *dev)
 \
 	static struct eth_rswitch_tsn_data eth_rswitch_tsn_data_##inst; \
 \
-	ETH_NET_DEVICE_DT_INST_DEFINE(inst, NULL, NULL, &eth_rswitch_tsn_data_##inst, &eth_rswitch_tsn_config_##inst, CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
+	ETH_NET_DEVICE_DT_INST_DEFINE(inst, eth_rswitch_tsn_device_init, NULL, &eth_rswitch_tsn_data_##inst, &eth_rswitch_tsn_config_##inst, CONFIG_ETH_INIT_PRIORITY, &eth_rswitch_ethernet_api, NET_ETH_MTU);
 
 DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH_TSN_INIT);
 
