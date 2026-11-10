@@ -564,6 +564,9 @@ DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH_TSN_INIT);
 #define DT_DRV_COMPAT renesas_rcar_rswitch
 
 #define ETH_RSWITCH_INIT(inst) \
+	BUILD_ASSERT(DT_INST_CHILD_NUM_STATUS_OKAY(inst) > 0, \
+		"At least one port (TSN or other) must be enabled."); \
+\
 	static const struct eth_rswitch_config eth_rswitch_config_##inst = { \
 		DEVICE_MMIO_ROM_INIT(DT_DRV_INST(inst)), \
 		.coma_offset = DT_INST_PROP(inst, coma_reg_offset), \
