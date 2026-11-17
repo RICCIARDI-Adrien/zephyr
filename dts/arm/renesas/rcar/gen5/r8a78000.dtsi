@@ -341,7 +341,7 @@
 				      "rsw3tsntes3", "rsw3tsntes4", "rsw3tsntes5",
 				      "rsw3tsntes6", "rsw3tsntes7",*/ "rsw3mfwd";
 				      // TODO
-			//power-domains = <&ethernet_rswitch3_pd>;
+			power-domains = <&ethernet_rswitch_pd>;
 
 			rswitch_tsn0: tsn0 {
 				clocks = <&scmi_clk R8A78000_CLK_RSW3TSNTES0>; // Clock inutile
