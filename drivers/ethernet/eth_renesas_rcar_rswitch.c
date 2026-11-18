@@ -48,6 +48,12 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 #define RSWITCH_TSNA_EAMS_OPS_CONFIG 2
 #define RSWITCH_TSNA_EAMS_OPS_OPERATION 3
 
+/* R-Switch Ethernet Agent TAS RAM Initialization Register Monitoring register */
+#define RSWITCH_TSNA_EATASRIRM 0x03E4
+/* R-Switch Ethernet Agent TAS RAM Initialization Register Monitoring register bits */
+#define RSWITCH_TSNA_EATASRIRM_TASRR BIT(1)
+#define RSWITCH_TSNA_EATASRIRM_TASRIOG BIT(0)
+
 /* R-Switch MAC PHY station management register */
 #define RSWITCH_RMAC_MPSM 0x0000
 /* R-Switch MAC PHY station management register bits */
@@ -328,7 +334,7 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 	//const struct eth_rswitch_config *global_config = global_dev->config;
 	uint32_t base_offset, val;
 
-	printk("eth_rswitch_phy_cb %s\n MPIC avant=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
+	printk("eth_rswitch_phy_cb %s MPIC avant=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
 
 	/* The MPIC register can only be written in Configuration mode */
 	if (eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_CONFIG) != 0) {
@@ -405,7 +411,7 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 		return ret;
 	}
 
-	/* Enable the port clock */
+	/* Enable the TSN agent clock */
 	base_offset = global_config->coma_offset + RSWITCH_COMA_RCEC;
 	val = eth_rswitch_read(global_dev, base_offset);
 	val |= 1 << tsn_config->id;
@@ -418,13 +424,18 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 		return ret;
 	}
 
+	/* Reset the TAS (Time Aware Shaper) dedicated RAM */
+	base_offset = tsn_config->tsna_offset + RSWITCH_TSNA_EATASRIRM;
+	eth_rswitch_write(global_dev, base_offset, RSWITCH_TSNA_EATASRIRM_TASRIOG);
+	eth_rswitch_busy_wait(global_dev, base_offset, RSWITCH_TSNA_EATASRIRM_TASRR,
+		RSWITCH_TSNA_EATASRIRM_TASRR);
+
 	/* Set the MAC address */
 	eth_rswitch_write(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MRMAC0,
 		(tsn_config->mac_config.addr[0] << 8) | tsn_config->mac_config.addr[1]);
 	eth_rswitch_write(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MRMAC1,
 		(tsn_config->mac_config.addr[2] << 24) | (tsn_config->mac_config.addr[3] << 16) |
 		(tsn_config->mac_config.addr[4] << 8) | tsn_config->mac_config.addr[5]);
-
 
 	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPIC;
 	switch (tsn_config->phy_mode) {
