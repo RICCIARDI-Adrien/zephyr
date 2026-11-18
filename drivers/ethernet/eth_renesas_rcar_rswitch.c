@@ -146,6 +146,7 @@ struct eth_rswitch_tsn_config {
 	const struct device *global_dev;
 	const struct device *phy_dev;
 	enum eth_rswitch_phy_mode phy_mode;
+	uint32_t mdio_bus_freq;
 };
 
 struct eth_rswitch_tsn_data {
@@ -373,7 +374,7 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 	int ret;
 
 	// TODO
-	printk("INIT IFACE nom=%s, id=%d, tsnaoffs=0x%08X, rmacoffs=0x%08X\n", tsn_dev->name, tsn_config->id, tsn_config->tsna_offset, tsn_config->rmac_offset);
+	printk("INIT IFACE nom=%s, id=%d, tsnaoffs=0x%08X, rmacoffs=0x%08X, mdio freq=%u\n", tsn_dev->name, tsn_config->id, tsn_config->tsna_offset, tsn_config->rmac_offset, tsn_config->mdio_bus_freq);
 	LOG_HEXDUMP_WRN(tsn_config->mac_config.addr, tsn_config->mac_config.addr_len, "MAC=");
 
 	net_if_set_link_addr(iface, tsn_config->mac_config.addr, tsn_config->mac_config.addr_len,
@@ -442,9 +443,8 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 	}
 	val <<= RSWITCH_RMAC_MPIC_PIS_SHIFT;
 
-	/* Set a standard 2.5MHz MDC clock frequency TODO prop clock-frequency mdio controller, mais chiant car dans noeud enfant */
-	psmcs_reg = global_config->mdio_base_clk_freq /
-		(2 * RSWITCH_DEFAULT_MDIO_BUS_FREQUENCY) - 1;
+	/* Set the MDC clock frequency */
+	psmcs_reg = global_config->mdio_base_clk_freq / (2 * tsn_config->mdio_bus_freq) - 1;
 	val |= ((psmcs_reg & RSWITCH_RMAC_MPIC_PSMCS_LOW_MASK) <<
 		RSWITCH_RMAC_MPIC_PSMCS_LOW_SHIFT) |
 		(((psmcs_reg >> 7) & RSWITCH_RMAC_MPIC_PSMCS_HIGH_MASK) <<
@@ -559,7 +559,8 @@ static int eth_rswitch_device_init(const struct device *dev)
 		.tsnes_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, name), \
 		.global_dev = DEVICE_DT_GET(DT_INST_PARENT(inst)), \
 		.phy_dev = DEVICE_DT_GET(DT_INST_PHANDLE(inst, phy_handle)), \
-		.phy_mode = ETH_RSWITCH_GET_PHY_MODE(DT_DRV_INST(inst)) \
+		.phy_mode = ETH_RSWITCH_GET_PHY_MODE(DT_DRV_INST(inst)), \
+		.mdio_bus_freq = DT_PROP(DT_PARENT(DT_INST_PHANDLE(inst, phy_handle)), clock_frequency) \
 	}; \
 \
 	static struct eth_rswitch_tsn_data eth_rswitch_tsn_data_##inst; \

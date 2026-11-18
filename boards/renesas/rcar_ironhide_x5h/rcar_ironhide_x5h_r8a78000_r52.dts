@@ -373,6 +373,7 @@
 		     &rswitch_etha4_mdc_default
 		     &rswitch_etha4_mdio_default>;
 	pinctrl-names = "default";
+	clock-frequency = <25000000>;
 	status = "okay";
 
 	rswitch_phy4: ethernet-phy@2 {
