@@ -98,6 +98,12 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 #define RSWITCH_RMAC_MPIC_PIS_GMII 2
 #define RSWITCH_RMAC_MPIC_PIS_XGMII 4
 
+/* R-Switch MAC reception MAC address configuration 0 register */
+#define RSWITCH_RMAC_MRMAC0 0x0084
+
+/* R-Switch MAC reception MAC address configuration 1 register */
+#define RSWITCH_RMAC_MRMAC1 0x0088
+
 #define RSWITCH_TSN_COUNT 13
 
 #define RSWITCH_TSNA_AREA_SIZE 0x1000
@@ -404,15 +410,22 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 	val |= 1 << tsn_config->id;
 	eth_rswitch_write(global_dev, base_offset, val);
 
-	/* The MPIC register can only be written in Configuration mode */
+	/* Some registers can only be written in Configuration mode */
 	ret = eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_CONFIG);
 	if (ret != 0) {
 		LOG_ERR("Failed to switch %s to config mode (%d).", tsn_dev->name, ret);
 		return ret;
 	}
 
-	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPIC;
+	/* Set the MAC address */
+	eth_rswitch_write(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MRMAC0,
+		(tsn_config->mac_config.addr[0] << 8) | tsn_config->mac_config.addr[1]);
+	eth_rswitch_write(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MRMAC1,
+		(tsn_config->mac_config.addr[2] << 24) | (tsn_config->mac_config.addr[3] << 16) |
+		(tsn_config->mac_config.addr[4] << 8) | tsn_config->mac_config.addr[5]);
 
+
+	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPIC;
 	switch (tsn_config->phy_mode) {
 	case ETH_RSWITCH_PHY_MODE_MII:
 		val = RSWITCH_RMAC_MPIC_PIS_MII;
