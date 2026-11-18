@@ -216,7 +216,7 @@ static int eth_rswitch_set_operating_mode(const struct device *tsn_dev,
 	/* Basic parameter sanitization */
 	mode &= RSWITCH_TSNA_EAMC_OPC_MASK;
 
-	printk("op mode AVANT EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
+printk("op mode AVANT EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
 
 	/* The TSN must be in Disable mode before going to any other mode */
 	val = eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS);
@@ -226,26 +226,22 @@ static int eth_rswitch_set_operating_mode(const struct device *tsn_dev,
 		if (eth_rswitch_busy_wait(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS,
 			RSWITCH_TSNA_EAMS_OPS_MASK, RSWITCH_OPERATING_MODE_DISABLE) != 0) {
 			LOG_ERR("Failed to set the Disable operating mode for %s.", tsn_dev->name);
-			//__ASSERT_NO_MSG(0);
 			return -EIO;
 		}
 	}
 
 	if (mode == RSWITCH_OPERATING_MODE_DISABLE) {
+printk("op mode APRES EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
 		return 0;
 	}
 	eth_rswitch_write(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC, mode);
 	if (eth_rswitch_busy_wait(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS,
 		RSWITCH_TSNA_EAMS_OPS_MASK, mode) != 0) {
 		LOG_ERR("Failed to set the %d operating mode for %s.\n", mode, tsn_dev->name);
-		//__ASSERT_NO_MSG(0);
 		return -EIO;
 	}
 
 printk("op mode APRES EAMC=%d, EAMS=%d\n", eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMC), eth_rswitch_read(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EAMS));
-
-	// TODO
-	//net_eth_carrier_set(data->iface, state->is_up);
 
 	return 0;
 }
@@ -333,42 +329,45 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 	const struct device *global_dev = tsn_config->global_dev;
 	//const struct eth_rswitch_config *global_config = global_dev->config;
 	uint32_t base_offset, val;
+	enum eth_rswitch_operating_mode new_operating_mode;
 
-	printk("eth_rswitch_phy_cb %s MPIC avant=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
-
-	/* The MPIC register can only be written in Configuration mode */
-	if (eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_CONFIG) != 0) {
-		return;
-	}
-
-	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPIC;
-
-	val = eth_rswitch_read(global_dev, base_offset);
-
-	val &= ~(RSWITCH_RMAC_MPIC_LSC_MASK << RSWITCH_RMAC_MPIC_LSC_SHIFT);
-	if (PHY_LINK_IS_SPEED_1000M(state->speed)) {
-		val |= RSWITCH_RMAC_MPIC_LSC_1_GBPS << RSWITCH_RMAC_MPIC_LSC_SHIFT;
-	}
-	else if (PHY_LINK_IS_SPEED_100M(state->speed)) {
-		val |= RSWITCH_RMAC_MPIC_LSC_100_MBPS << RSWITCH_RMAC_MPIC_LSC_SHIFT;
-	}
-	else if (PHY_LINK_IS_SPEED_10M(state->speed)) {
-		val |= RSWITCH_RMAC_MPIC_LSC_10_MBPS << RSWITCH_RMAC_MPIC_LSC_SHIFT;
-	}
-	else {
-		LOG_ERR("Unsupported link speed 0x%X.", state->speed);
-		return;
-	}
-	eth_rswitch_write(global_dev, base_offset, val);
+	printk("eth_rswitch_phy_cb %s MPIC avant=0x%08X, state->speed=%d\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC), state->speed);
 
 	if (state->is_up) {
-		eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
+		/* Configure the link speed */
+		base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPIC;
+		val = eth_rswitch_read(global_dev, base_offset);
+		val &= ~(RSWITCH_RMAC_MPIC_LSC_MASK << RSWITCH_RMAC_MPIC_LSC_SHIFT);
+		if (PHY_LINK_IS_SPEED_1000M(state->speed)) {
+			val |= RSWITCH_RMAC_MPIC_LSC_1_GBPS << RSWITCH_RMAC_MPIC_LSC_SHIFT;
+		}
+		else if (PHY_LINK_IS_SPEED_100M(state->speed)) {
+			val |= RSWITCH_RMAC_MPIC_LSC_100_MBPS << RSWITCH_RMAC_MPIC_LSC_SHIFT;
+		}
+		else if (PHY_LINK_IS_SPEED_10M(state->speed)) {
+			val |= RSWITCH_RMAC_MPIC_LSC_10_MBPS << RSWITCH_RMAC_MPIC_LSC_SHIFT;
+		}
+		else {
+			LOG_ERR("Unsupported link speed 0x%X.", state->speed);
+			return;
+		}
+
+		/* The MPIC register can only be written in Configuration mode */
+		if (eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_CONFIG) != 0) {
+			return;
+		}
+		eth_rswitch_write(global_dev, base_offset, val);
+
+		new_operating_mode = RSWITCH_OPERATING_MODE_OPERATION;
 	}
 	else {
-		//eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_DISABLE);
--               // TEST pour le moment
--               eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
+		new_operating_mode = RSWITCH_OPERATING_MODE_DISABLE;
+		// TEST pour le moment
+		//eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
 	}
+
+	eth_rswitch_set_operating_mode(tsn_dev, new_operating_mode);
+	//net_eth_carrier_set(data->iface, state->is_up);
 
 	//printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X, val=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC), val);
 }
@@ -464,9 +463,11 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 	val |= RSWITCH_RMAC_MPIC_PSMHT_DEFAULT_HOLD_TIME << RSWITCH_RMAC_MPIC_PSMHT_SHIFT;
 	eth_rswitch_write(global_dev, base_offset, val);
 
-	// TODO
-
-	ret = eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
+	/*
+	 * Stay in disable mode until the link becomes up.
+	 * Note that the MDIO transfers are working in disable mode, allowing to talk to the PHY.
+	 */
+	ret = eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_DISABLE);
 	if (ret != 0) {
 		LOG_ERR("Failed to switch %s to operating mode (%d).", tsn_dev->name, ret);
 		return ret;
