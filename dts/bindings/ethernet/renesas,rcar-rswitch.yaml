@@ -11,6 +11,12 @@ properties:
   reg:
     required: true
 
+  mdio-base-clk-freq:
+    type: int
+    required: true
+    description: |
+      TODO
+
   coma-reg-offset:
     type: int
     required: true
@@ -27,7 +33,8 @@ properties:
   tsna-count:
     type: int
     required: true
-    description: How many TSNA (ETHA) are provided by the hardware
+    description: |
+      How many TSNA (ETHA) are provided by the hardware
 
  # ports:
  #   type: array

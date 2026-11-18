@@ -78,8 +78,10 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 #define RSWITCH_RMAC_MPIC_PSMHT_MASK 0x0000000F
 #define RSWITCH_RMAC_MPIC_PSMHT_SHIFT 24
 #define RSWITCH_RMAC_MPIC_PSMHT_DEFAULT_HOLD_TIME 6
-#define RSWITCH_RMAC_MPIC_PSMCS_MASK 0x000000FF
-#define RSWITCH_RMAC_MPIC_PSMCS_SHIFT 13
+#define RSWITCH_RMAC_MPIC_PSMCS_LOW_MASK 0x0000007F
+#define RSWITCH_RMAC_MPIC_PSMCS_LOW_SHIFT 16
+#define RSWITCH_RMAC_MPIC_PSMCS_HIGH_MASK 0x00000007
+#define RSWITCH_RMAC_MPIC_PSMCS_HIGH_SHIFT 13
 #define RSWITCH_RMAC_MPIC_PLSPP BIT(10)
 #define RSWITCH_RMAC_MPIC_PIPP BIT(9)
 #define RSWITCH_RMAC_MPIC_LSC_MASK 0x00000007
@@ -101,6 +103,8 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 #define RSWITCH_TSNA_AREA_SIZE 0x1000
 #define RSWITCH_RMAC_AREA_SIZE 0x1000
 
+#define RSWITCH_DEFAULT_MDIO_BUS_FREQUENCY 2500000 /* In Hz */
+
 struct eth_rswitch_config {
 	DEVICE_MMIO_ROM; /* Must be first */
 	//const struct eth_rswitch_port_config *port_configs;
@@ -113,6 +117,7 @@ struct eth_rswitch_config {
 	clock_control_subsys_t rsw3_aes_clk;
 	//clock_control_subsys_t rsw3_tsn_clks[ETH_RSWITCH_TSN_COUNT];
 	clock_control_subsys_t rsw3_mfwd_clk;
+	uint32_t mdio_base_clk_freq;
 };
 
 struct eth_rswitch_data {
@@ -315,8 +320,6 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 	const struct device *global_dev = tsn_config->global_dev;
 	//const struct eth_rswitch_config *global_config = global_dev->config;
 	uint32_t base_offset, val;
-	//int ret;
-	//struct eth_rswitch_tsn_data *tsn_data = tsn_dev->data;
 
 	printk("eth_rswitch_phy_cb %s\n MPIC avant=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC));
 
@@ -324,15 +327,6 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 	if (eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_CONFIG) != 0) {
 		return;
 	}
-
-	/*ret = clock_control_get_rate(global_config->clock_dev, tsn_config->tsnes_clk, &val);
-	if (ret < 0) {
-		LOG_ERR("Failed to get the TSN clock rate for device %s (%d).",
-			tsn_dev->name, ret);
-		return;
-	}
-
-printk("eth_rswitch_phy_cb %sRATE=%u\n", tsn_dev->name, val);*/
 
 	base_offset = tsn_config->rmac_offset + RSWITCH_RMAC_MPIC;
 
@@ -354,14 +348,13 @@ printk("eth_rswitch_phy_cb %sRATE=%u\n", tsn_dev->name, val);*/
 	}
 	eth_rswitch_write(global_dev, base_offset, val);
 
-	// TODO possible version finale
 	if (state->is_up) {
 		eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
 	}
 	else {
-		eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_DISABLE);
-		// TEST
-		//eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
+		//eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_DISABLE);
+-               // TEST pour le moment
+-               eth_rswitch_set_operating_mode(tsn_dev, RSWITCH_OPERATING_MODE_OPERATION);
 	}
 
 	//printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X, val=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC), val);
@@ -396,7 +389,7 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
 	const struct device *global_dev = tsn_config->global_dev;
 	const struct eth_rswitch_config *global_config = global_dev->config;
-	uint32_t base_offset, val;
+	uint32_t base_offset, val, psmcs_reg;
 	int ret;
 
 	ret = clock_control_on(global_config->clock_dev, tsn_config->tsnes_clk);
@@ -436,8 +429,13 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 	}
 	val <<= RSWITCH_RMAC_MPIC_PIS_SHIFT;
 
-	// TODO récupération rate clock ne fonctionne pas
-	val |= 256UL << RSWITCH_RMAC_MPIC_PSMCS_SHIFT; // TODO attention champs little endian
+	/* Set a standard 2.5MHz MDC clock frequency TODO prop clock-frequency mdio controller, mais chiant car dans noeud enfant */
+	psmcs_reg = global_config->mdio_base_clk_freq /
+		(2 * RSWITCH_DEFAULT_MDIO_BUS_FREQUENCY) - 1;
+	val |= ((psmcs_reg & RSWITCH_RMAC_MPIC_PSMCS_LOW_MASK) <<
+		RSWITCH_RMAC_MPIC_PSMCS_LOW_SHIFT) |
+		(((psmcs_reg >> 7) & RSWITCH_RMAC_MPIC_PSMCS_HIGH_MASK) <<
+		RSWITCH_RMAC_MPIC_PSMCS_HIGH_SHIFT);
 
 	val |= RSWITCH_RMAC_MPIC_PSMHT_DEFAULT_HOLD_TIME << RSWITCH_RMAC_MPIC_PSMHT_SHIFT;
 	eth_rswitch_write(global_dev, base_offset, val);
@@ -574,7 +572,8 @@ DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH_TSN_INIT);
 		.rsw3_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3, name), \
 		.rsw3_tsn_global_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3tsn, name), \
 		.rsw3_aes_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3aes, name), \
-		.rsw3_mfwd_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3mfwd, name) \
+		.rsw3_mfwd_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3mfwd, name), \
+		.mdio_base_clk_freq = DT_INST_PROP(inst, mdio_base_clk_freq) \
 	}; \
 \
 	static struct eth_rswitch_data eth_rswitch_data_##inst; \
