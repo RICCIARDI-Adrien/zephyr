@@ -17,6 +17,11 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 /* The total amount of TSN IP blocks. */
 //#define ETH_RSWITCH_TSN_COUNT 8
 
+/* R-Switch Forwarding Engine Port Configuration 0 n register */
+#define RSWITCH_MFWD_FWPC0N 0x0100
+/* R-Switch Forwarding Engine Port Configuration 0 n register bits */
+#define RSWITCH_MFWD_FWPC0N_MACHLA BIT(26)
+
 /* R-Switch IP Version register */
 #define RSWITCH_COMA_RIPV 0x0000
 
@@ -133,6 +138,7 @@ struct eth_rswitch_config {
 	//const struct eth_rswitch_port_config *port_configs;
 	//size_t ports_count;
 	uint32_t reg;
+	uint32_t mfwd_offset;
 	uint32_t coma_offset;
 	const struct device *clock_dev;
 	clock_control_subsys_t rsw3_clk;
@@ -421,6 +427,22 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 		LOG_ERR("Failed to turn the tsn%d clock on (%d).", tsn_config->id, ret);
 		return ret;
 	}
+
+	/* Configure the forwarding engine for this port */
+	base_offset = global_config->mfwd_offset + 16 * tsn_config->id;
+	// TODO bits ajoutés à la main pour correspondre à la config d'U-Boot, vérifier l'utilité
+	eth_rswitch_write(global_dev, base_offset, RSWITCH_MFWD_FWPC0N_MACHLA |
+		BIT(28) | // VLANSA
+		BIT(27) | // MACHMA
+		BIT(20) | // MACDSA
+		BIT(9) | // L2SE
+		BIT(8) | // Moi, IP6OE
+		BIT(7) | // Moi, IP6TE
+		BIT(6) | // Moi, IP6UE
+		BIT(5) | // IP4OE
+		BIT(4) | // IP4TE
+		BIT(3) | // IP4UE
+		BIT(0)); // LTHTA
 
 	/* Enable the TSN agent clock */
 	base_offset = global_config->coma_offset + RSWITCH_COMA_RCEC;
@@ -714,6 +736,7 @@ DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH_TSN_INIT);
 \
 	static const struct eth_rswitch_config eth_rswitch_config_##inst = { \
 		DEVICE_MMIO_ROM_INIT(DT_DRV_INST(inst)), \
+		.mfwd_offset = DT_INST_PROP(inst, mfwd_reg_offset), \
 		.coma_offset = DT_INST_PROP(inst, coma_reg_offset), \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)), \
 		.rsw3_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3, name), \
