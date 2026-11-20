@@ -451,6 +451,7 @@
 			compatible = "renesas,rcar-rswitch";
 			reg = <0xc9b80000 0x40000>; // TODO inclure range non secure ?
 			mdio-base-clk-freq = <688000000>; // TODO valeur mesurée louche
+			mfwd-reg-offset = <0>;
 			coma-reg-offset = <0x1C000>;
 			tsna-reg-base-offset = <0x1D000>;
 			tsna-count = <5>;
