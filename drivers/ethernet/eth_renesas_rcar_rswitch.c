@@ -30,6 +30,12 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 /* R-Switch Clock Enable Configuration register bits */
 #define RSWITCH_COMA_RCEC_RCE BIT(16)
 
+/* R-Switch Common Agent Buffer Pool Initialization Register Monitoring register */
+#define RSWITCH_COMA_CABPIRM 0x0160
+/* R-Switch Common Agent Buffer Pool Initialization Register Monitoring register bits */
+#define RSWITCH_COMA_CABPIRM_BPR BIT(1)
+#define RSWITCH_COMA_CABPIRM_BPIOG BIT(0)
+
 /* R-Switch Ethernet Agent Mode Configuration register */
 #define RSWITCH_TSNA_EAMC 0x0000
 /* R-Switch Ethernet Agent Mode Configuration register bits */
@@ -642,10 +648,20 @@ static int eth_rswitch_device_init(const struct device *dev)
 	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RRC, RSWITCH_COMA_RRC_RR);
 	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RRC, 0);
 
-	/* Internally enable the controller clocks (each port will enable its own clock later) */
+	/* Internally enable the controller clock only (each agent will enable its own clock later) */
 	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RCEC, RSWITCH_COMA_RCEC_RCE);
 
-	LOG_DBG("R-Switch controller IPs version: 0x%08X.", eth_rswitch_read(dev, config->coma_offset + RSWITCH_COMA_RIPV));
+	/* Initialize the buffer pool */
+	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_CABPIRM,
+		RSWITCH_COMA_CABPIRM_BPIOG);
+	if (eth_rswitch_busy_wait(dev, config->coma_offset + RSWITCH_COMA_CABPIRM,
+		RSWITCH_COMA_CABPIRM_BPR, RSWITCH_COMA_CABPIRM_BPR) != 0) {
+		LOG_ERR("Failed to reset the buffer pool.");
+		return -EIO;
+	}
+
+	LOG_DBG("R-Switch controller IPs version: 0x%08X.",
+		eth_rswitch_read(dev, config->coma_offset + RSWITCH_COMA_RIPV));
 
 	return 0;
 }
