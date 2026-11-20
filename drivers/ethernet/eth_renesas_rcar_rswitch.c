@@ -48,6 +48,11 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 #define RSWITCH_TSNA_EAMS_OPS_CONFIG 2
 #define RSWITCH_TSNA_EAMS_OPS_OPERATION 3
 
+/* R-Switch Ethernet Agent Tx Descriptor RAM Configuration register */
+#define RSWITCH_TSNA_EATDRC 0x0008
+/* R-Switch Ethernet Agent Tx Descriptor RAM Configuration register bits */
+#define RSWITCH_TSNA_EATDRC_TDRM BIT(0)
+
 /* R-Switch Ethernet Agent TAS RAM Initialization Register Monitoring register */
 #define RSWITCH_TSNA_EATASRIRM 0x03E4
 /* R-Switch Ethernet Agent TAS RAM Initialization Register Monitoring register bits */
@@ -381,7 +386,7 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 
 	// TODO
 	printk("INIT IFACE nom=%s, id=%d, tsnaoffs=0x%08X, rmacoffs=0x%08X, mdio freq=%u\n", tsn_dev->name, tsn_config->id, tsn_config->tsna_offset, tsn_config->rmac_offset, tsn_config->mdio_bus_freq);
-	LOG_HEXDUMP_WRN(tsn_config->mac_config.addr, tsn_config->mac_config.addr_len, "MAC=");
+	//LOG_HEXDUMP_WRN(tsn_config->mac_config.addr, tsn_config->mac_config.addr_len, "MAC=");
 
 	net_if_set_link_addr(iface, tsn_config->mac_config.addr, tsn_config->mac_config.addr_len,
 		NET_LINK_ETHERNET);
@@ -429,6 +434,13 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 	eth_rswitch_write(global_dev, base_offset, RSWITCH_TSNA_EATASRIRM_TASRIOG);
 	eth_rswitch_busy_wait(global_dev, base_offset, RSWITCH_TSNA_EATASRIRM_TASRR,
 		RSWITCH_TSNA_EATASRIRM_TASRR);
+
+	// TEST
+	// Descriptor RAM shared by all queues
+	eth_rswitch_write(global_dev, tsn_config->tsna_offset + RSWITCH_TSNA_EATDRC,
+		RSWITCH_TSNA_EATDRC_TDRM);
+	// TODO EATMFSCq pour taille trame max avec MTU
+	// TODO EARTFC types de tags acceptés
 
 	/* Set the MAC address */
 	eth_rswitch_write(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MRMAC0,
