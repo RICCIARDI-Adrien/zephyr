@@ -324,7 +324,8 @@ int eth_rswitch_mdio_write(const struct device *tsn_dev, uint8_t prtad, uint8_t 
 static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *state,
 			       void *user_data)
 {
-	const struct device *tsn_dev = user_data;
+	struct net_if *iface = user_data;
+	const struct device *tsn_dev = net_if_get_device(iface);
 	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
 	const struct device *global_dev = tsn_config->global_dev;
 	//const struct eth_rswitch_config *global_config = global_dev->config;
@@ -367,7 +368,7 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 	}
 
 	eth_rswitch_set_operating_mode(tsn_dev, new_operating_mode);
-	//net_eth_carrier_set(data->iface, state->is_up);
+	net_eth_carrier_set(iface, state->is_up);
 
 	//printk("eth_rswitch_phy_cb %s\n MPIC apres=0x%08X, val=0x%08X\n", tsn_dev->name, eth_rswitch_read(global_dev, tsn_config->rmac_offset + RSWITCH_RMAC_MPIC), val);
 }
@@ -387,7 +388,7 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 	ethernet_init(iface);
 	net_if_carrier_off(iface);
 
-	ret = phy_link_callback_set(tsn_config->phy_dev, eth_rswitch_phy_cb, (void *)tsn_dev);
+	ret = phy_link_callback_set(tsn_config->phy_dev, eth_rswitch_phy_cb, (void *)iface);
 	if (ret != 0) {
 		LOG_ERR("Failed to register the PHY link callback for %s (%d).", tsn_dev->name, ret);
 		return;
