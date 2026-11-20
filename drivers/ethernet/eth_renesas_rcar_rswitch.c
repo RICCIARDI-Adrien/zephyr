@@ -479,8 +479,100 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 	return 0;
 }
 
+static int eth_rswitch_start(const struct device *dev, struct net_if *iface)
+{
+	LOG_WRN("START");
+
+	return 0;
+}
+
+static int eth_rswitch_stop(const struct device *dev, struct net_if *iface)
+{
+	LOG_WRN("START");
+
+	return 0;
+}
+
+static enum ethernet_hw_caps eth_rswitch_get_capabilities(const struct device *tsn_dev,
+							  struct net_if *iface)
+{
+	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
+	enum ethernet_hw_caps caps;
+
+	LOG_WRN("GET CAPABILITIES");
+
+	/* Assume that no one will connect a 10Mbps-only PHY to this controller */
+	caps = ETHERNET_LINK_10BASE | ETHERNET_LINK_100BASE;
+
+	if ((tsn_config->phy_mode == ETH_RSWITCH_PHY_MODE_GMII) ||
+		(tsn_config->phy_mode == ETH_RSWITCH_PHY_MODE_XGMII)) {
+		caps |= ETHERNET_LINK_1000BASE;
+	}
+
+	if (tsn_config->phy_mode == ETH_RSWITCH_PHY_MODE_XGMII) {
+		caps |= ETHERNET_LINK_2500BASE | ETHERNET_LINK_5000BASE; // TODO 10Gbits/s
+	};
+
+	// TODO ETHERNET_PROMISC_MODE ?
+
+	// TODO ETHERNET_PRIORITY_QUEUES ?
+
+	// TODO ETHERNET_HW_FILTERING ?
+
+	// TODO ETHERNET_HW_TX_CHKSUM_OFFLOAD ?
+
+	// TODO ETHERNET_HW_RX_CHKSUM_OFFLOAD ?
+
+	// TODO ETHERNET_HW_VLAN ?
+
+	// TODO autres possibles, comme QBV
+
+	return caps;
+}
+
+static int eth_rswitch_set_config(const struct device *dev, struct net_if *iface,
+				  enum ethernet_config_type type,
+				  const struct ethernet_config *config)
+{
+	LOG_WRN("SET CONFIG");
+
+	return 0;
+}
+
+static int eth_rswitch_get_config(const struct device *dev, struct net_if *iface,
+				  enum ethernet_config_type type, struct ethernet_config *config)
+{
+	LOG_WRN("GET CONFIG, type=%d", type);
+	//*config = 0;
+
+	return 0;
+}
+
+const struct device *eth_rswitch_get_phy(const struct device *tsn_dev, struct net_if *iface)
+{
+	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
+
+	LOG_WRN("GET PHY");
+
+	return tsn_config->phy_dev;
+}
+
+static int eth_rswitch_send(const struct device *dev, struct net_pkt *pkt)
+{
+	LOG_WRN("SEND");
+
+	return 0;
+}
+
 static const struct ethernet_api eth_rswitch_ethernet_api = {
 	.iface_api.init = eth_rswitch_iface_init,
+	.start = eth_rswitch_start,
+	.stop = eth_rswitch_stop,
+	.get_capabilities = eth_rswitch_get_capabilities,
+	.set_config = eth_rswitch_set_config,
+	.get_config = eth_rswitch_get_config,
+	.get_phy = eth_rswitch_get_phy,
+	.send = eth_rswitch_send
 };
 
 static int eth_rswitch_device_init(const struct device *dev)
