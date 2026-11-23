@@ -141,7 +141,7 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 
 #define RSWITCH_DEFAULT_MDIO_BUS_FREQUENCY 2500000 /* In Hz */
 
-struct eth_rswitch_config {
+struct eth_rswitch_global_config {
 	DEVICE_MMIO_ROM; /* Must be first */
 	//const struct eth_rswitch_port_config *port_configs;
 	//size_t ports_count;
@@ -197,21 +197,14 @@ enum eth_rswitch_operating_mode {
 // TODO pareil pour port ?
 static inline uint32_t eth_rswitch_read(const struct device *dev, uint32_t offset)
 {
-	const struct eth_rswitch_config *config = dev->config;
-
 	uint32_t res = sys_read32(DEVICE_MMIO_GET(dev) + offset);
 	//printk("\033[32mLECTURE 0x%lX=0x%08X\033[0m\n", DEVICE_MMIO_GET(dev) + offset, res);
 	return res;
-
-	// TODO vraie version
-	//return sys_read32(DEVICE_MMIO_GET(dev) + offset);
 }
 
 // TODO pareil pour port ?
 static inline void eth_rswitch_write(const struct device *dev, uint32_t offset, uint32_t value)
 {
-	const struct eth_rswitch_config *config = dev->config;
-
 	//printk("\033[32mECRITURE MMIO=0x%lX\033[0m\n", DEVICE_MMIO_GET(dev) + offset);
 
 	sys_write32(value, DEVICE_MMIO_GET(dev) + offset);
@@ -355,7 +348,6 @@ static void eth_rswitch_phy_cb(const struct device *phy, struct phy_link_state *
 	const struct device *tsn_dev = net_if_get_device(iface);
 	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
 	const struct device *global_dev = tsn_config->global_dev;
-	//const struct eth_rswitch_config *global_config = global_dev->config;
 	uint32_t base_offset, val;
 	enum eth_rswitch_operating_mode new_operating_mode;
 
@@ -428,7 +420,7 @@ static void eth_rswitch_tsn_forwarding_init(const struct device *tsn_dev)
 {
 	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
 	const struct device *global_dev = tsn_config->global_dev;
-	const struct eth_rswitch_config *global_config = global_dev->config;
+	const struct eth_rswitch_global_config *global_config = global_dev->config;
 	uint32_t base_offset;
 
 	/* Configure the forwarding rules */
@@ -466,7 +458,7 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 {
 	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
 	const struct device *global_dev = tsn_config->global_dev;
-	const struct eth_rswitch_config *global_config = global_dev->config;
+	const struct eth_rswitch_global_config *global_config = global_dev->config;
 	uint32_t base_offset, val, psmcs_reg;
 	int ret;
 
@@ -652,33 +644,33 @@ static const struct ethernet_api eth_rswitch_ethernet_api = {
 
 static int eth_rswitch_device_init(const struct device *dev)
 {
-	const struct eth_rswitch_config *config = dev->config;
+	const struct eth_rswitch_global_config *global_config = dev->config;
 	int ret;
 
-	if (!device_is_ready(config->clock_dev)) {
+	if (!device_is_ready(global_config->clock_dev)) {
 		LOG_ERR("The clock device is not ready.");
 		return -ENODEV;
 	}
 
-	ret = clock_control_on(config->clock_dev, config->rsw3_clk);
+	ret = clock_control_on(global_config->clock_dev, global_config->rsw3_clk);
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the rsw3 clock on.");
 		return ret;
 	}
 
-	ret = clock_control_on(config->clock_dev, config->rsw3_tsn_global_clk);
+	ret = clock_control_on(global_config->clock_dev, global_config->rsw3_tsn_global_clk);
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the rsw3_tsn_global clock on.");
 		return ret;
 	}
 
-	ret = clock_control_on(config->clock_dev, config->rsw3_aes_clk);
+	ret = clock_control_on(global_config->clock_dev, global_config->rsw3_aes_clk);
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the rsw3_aes clock on.");
 		return ret;
 	}
 
-	ret = clock_control_on(config->clock_dev, config->rsw3_mfwd_clk);
+	ret = clock_control_on(global_config->clock_dev, global_config->rsw3_mfwd_clk);
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the rsw3_mfwd clock on.");
 		return ret;
@@ -702,23 +694,24 @@ static int eth_rswitch_device_init(const struct device *dev)
 		}*/
 
 	/* Reset the controller (must be de-asserted quickly to avoid a power consumption peak) */
-	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RRC, RSWITCH_COMA_RRC_RR);
-	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RRC, 0);
+	eth_rswitch_write(dev, global_config->coma_offset + RSWITCH_COMA_RRC, RSWITCH_COMA_RRC_RR);
+	eth_rswitch_write(dev, global_config->coma_offset + RSWITCH_COMA_RRC, 0);
 
 	/* Enable the controller clock only (each agent will enable its own clock later) */
-	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RCEC, RSWITCH_COMA_RCEC_RCE);
+	eth_rswitch_write(dev, global_config->coma_offset + RSWITCH_COMA_RCEC,
+		RSWITCH_COMA_RCEC_RCE);
 
 	/* Initialize the buffer pool */
-	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_CABPIRM,
+	eth_rswitch_write(dev, global_config->coma_offset + RSWITCH_COMA_CABPIRM,
 		RSWITCH_COMA_CABPIRM_BPIOG);
-	if (eth_rswitch_busy_wait(dev, config->coma_offset + RSWITCH_COMA_CABPIRM,
+	if (eth_rswitch_busy_wait(dev, global_config->coma_offset + RSWITCH_COMA_CABPIRM,
 		RSWITCH_COMA_CABPIRM_BPR, RSWITCH_COMA_CABPIRM_BPR) != 0) {
 		LOG_ERR("Failed to reset the buffer pool.");
 		return -EIO;
 	}
 
 	LOG_DBG("R-Switch controller IPs version: 0x%08X.",
-		eth_rswitch_read(dev, config->coma_offset + RSWITCH_COMA_RIPV));
+		eth_rswitch_read(dev, global_config->coma_offset + RSWITCH_COMA_RIPV));
 
 	return 0;
 }
@@ -769,7 +762,7 @@ DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH_TSN_INIT);
 	BUILD_ASSERT(DT_INST_CHILD_NUM_STATUS_OKAY(inst) > 0, \
 		"At least one port (TSN or other) must be enabled."); \
 \
-	static const struct eth_rswitch_config eth_rswitch_config_##inst = { \
+	static const struct eth_rswitch_global_config eth_rswitch_global_config_##inst = { \
 		DEVICE_MMIO_ROM_INIT(DT_DRV_INST(inst)), \
 		.mfwd_offset = DT_INST_PROP(inst, mfwd_reg_offset), \
 		.coma_offset = DT_INST_PROP(inst, coma_reg_offset), \
@@ -797,7 +790,7 @@ DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH_TSN_INIT);
 	/*ETH_RSWITCH_DETECT_PORT(inst, 7, rsw3tsntes7);*/ \
 \
 	DEVICE_DT_INST_DEFINE(inst, eth_rswitch_device_init, NULL,					\
-		&eth_rswitch_data_##inst, &eth_rswitch_config_##inst,				\
+		&eth_rswitch_data_##inst, &eth_rswitch_global_config_##inst,				\
 		POST_KERNEL, CONFIG_ETH_INIT_PRIORITY, NULL);
 
 
