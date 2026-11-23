@@ -27,6 +27,9 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 /* R-Switch Forwarding Engine Port Based Forwarding Configuration 0 n register bits */
 #define RSWITCH_MFWD_FWPBFC0N_PBDV_MASK 0xFFFF
 
+/* R-Switch Forwarding Engine Port Based Forwarding CSD Configuration, GWCA0, n register */
+#define RSWITCH_MFWD_FWPBFCSDC0N 0x4B00
+
 /* R-Switch IP Version register */
 #define RSWITCH_COMA_RIPV 0x0000
 
@@ -421,7 +424,7 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 	LOG_DBG("Successfully initialized %s Ethernet interface.", tsn_dev->name);
 }
 
-static int eth_rswitch_tsn_forwarding_init(const struct device *tsn_dev)
+static void eth_rswitch_tsn_forwarding_init(const struct device *tsn_dev)
 {
 	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
 	const struct device *global_dev = tsn_config->global_dev;
@@ -453,6 +456,10 @@ static int eth_rswitch_tsn_forwarding_init(const struct device *tsn_dev)
 	base_offset = global_config->mfwd_offset + 16 * global_config->gwca_port_id;
 	eth_rswitch_write(global_dev, base_offset + RSWITCH_MFWD_FWPBFC0N,
 		1 << tsn_config->id);
+
+	/* Configure the GWCA CPU sub destination "queue" for this TSNA port */
+	base_offset = global_config->mfwd_offset + 32 * tsn_config->id;
+	//eth_rswitch_write(global_dev, base_offset + RSWITCH_MFWD_FWPBFCSDC0N,  TODO RX_CHAIN
 }
 
 static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
