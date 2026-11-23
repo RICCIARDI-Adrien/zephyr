@@ -642,9 +642,9 @@ static const struct ethernet_api eth_rswitch_ethernet_api = {
 	.send = eth_rswitch_send
 };
 
-static int eth_rswitch_device_init(const struct device *dev)
+static int eth_rswitch_device_init(const struct device *global_dev)
 {
-	const struct eth_rswitch_global_config *global_config = dev->config;
+	const struct eth_rswitch_global_config *global_config = global_dev->config;
 	int ret;
 
 	if (!device_is_ready(global_config->clock_dev)) {
@@ -676,7 +676,7 @@ static int eth_rswitch_device_init(const struct device *dev)
 		return ret;
 	}
 
-	DEVICE_MMIO_MAP(dev, K_MEM_CACHE_NONE | K_MEM_DIRECT_MAP);
+	DEVICE_MMIO_MAP(global_dev, K_MEM_CACHE_NONE | K_MEM_DIRECT_MAP);
 
 	/*LOG_WRN("on pd %d", pm_device_on_power_domain(dev));
 
@@ -694,24 +694,25 @@ static int eth_rswitch_device_init(const struct device *dev)
 		}*/
 
 	/* Reset the controller (must be de-asserted quickly to avoid a power consumption peak) */
-	eth_rswitch_write(dev, global_config->coma_offset + RSWITCH_COMA_RRC, RSWITCH_COMA_RRC_RR);
-	eth_rswitch_write(dev, global_config->coma_offset + RSWITCH_COMA_RRC, 0);
+	eth_rswitch_write(global_dev, global_config->coma_offset + RSWITCH_COMA_RRC,
+		RSWITCH_COMA_RRC_RR);
+	eth_rswitch_write(global_dev, global_config->coma_offset + RSWITCH_COMA_RRC, 0);
 
 	/* Enable the controller clock only (each agent will enable its own clock later) */
-	eth_rswitch_write(dev, global_config->coma_offset + RSWITCH_COMA_RCEC,
+	eth_rswitch_write(global_dev, global_config->coma_offset + RSWITCH_COMA_RCEC,
 		RSWITCH_COMA_RCEC_RCE);
 
 	/* Initialize the buffer pool */
-	eth_rswitch_write(dev, global_config->coma_offset + RSWITCH_COMA_CABPIRM,
+	eth_rswitch_write(global_dev, global_config->coma_offset + RSWITCH_COMA_CABPIRM,
 		RSWITCH_COMA_CABPIRM_BPIOG);
-	if (eth_rswitch_busy_wait(dev, global_config->coma_offset + RSWITCH_COMA_CABPIRM,
+	if (eth_rswitch_busy_wait(global_dev, global_config->coma_offset + RSWITCH_COMA_CABPIRM,
 		RSWITCH_COMA_CABPIRM_BPR, RSWITCH_COMA_CABPIRM_BPR) != 0) {
 		LOG_ERR("Failed to reset the buffer pool.");
 		return -EIO;
 	}
 
 	LOG_DBG("R-Switch controller IPs version: 0x%08X.",
-		eth_rswitch_read(dev, global_config->coma_offset + RSWITCH_COMA_RIPV));
+		eth_rswitch_read(global_dev, global_config->coma_offset + RSWITCH_COMA_RIPV));
 
 	return 0;
 }
