@@ -22,6 +22,11 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 /* R-Switch Forwarding Engine Port Configuration 0 n register bits */
 #define RSWITCH_MFWD_FWPC0N_MACHLA BIT(26)
 
+/* R-Switch Forwarding Engine Port Based Forwarding Configuration 0 n register */
+#define RSWITCH_MFWD_FWPBFC0N 0x4A00
+/* R-Switch Forwarding Engine Port Based Forwarding Configuration 0 n register bits */
+#define RSWITCH_MFWD_FWPBFC0N_PBDV_MASK 0xFFFF
+
 /* R-Switch IP Version register */
 #define RSWITCH_COMA_RIPV 0x0000
 
@@ -140,6 +145,7 @@ struct eth_rswitch_config {
 	uint32_t reg;
 	uint32_t mfwd_offset;
 	uint32_t coma_offset;
+	uint32_t gwca_offset;
 	const struct device *clock_dev;
 	clock_control_subsys_t rsw3_clk;
 	clock_control_subsys_t rsw3_tsn_global_clk;
@@ -147,6 +153,7 @@ struct eth_rswitch_config {
 	//clock_control_subsys_t rsw3_tsn_clks[ETH_RSWITCH_TSN_COUNT];
 	clock_control_subsys_t rsw3_mfwd_clk;
 	uint32_t mdio_base_clk_freq;
+	uint32_t gwca_port_id;
 };
 
 struct eth_rswitch_data {
@@ -414,6 +421,40 @@ static void eth_rswitch_iface_init(struct net_if *iface)
 	LOG_DBG("Successfully initialized %s Ethernet interface.", tsn_dev->name);
 }
 
+static int eth_rswitch_tsn_forwarding_init(const struct device *tsn_dev)
+{
+	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
+	const struct device *global_dev = tsn_config->global_dev;
+	const struct eth_rswitch_config *global_config = global_dev->config;
+	uint32_t base_offset;
+
+	/* Configure the forwarding rules */
+	base_offset = global_config->mfwd_offset + 16 * tsn_config->id;
+	// TODO bits ajoutés à la main pour correspondre à la config d'U-Boot, vérifier l'utilité
+	eth_rswitch_write(global_dev, base_offset + RSWITCH_MFWD_FWPC0N,
+		RSWITCH_MFWD_FWPC0N_MACHLA |
+		BIT(28) | // VLANSA
+		BIT(27) | // MACHMA
+		BIT(20) | // MACDSA
+		BIT(9) | // L2SE
+		BIT(8) | // Moi, IP6OE
+		BIT(7) | // Moi, IP6TE
+		BIT(6) | // Moi, IP6UE
+		BIT(5) | // IP4OE
+		BIT(4) | // IP4TE
+		BIT(3) | // IP4UE
+		BIT(0)); // LTHTA
+
+	/* Configure the port-based forwarding between this port and the GWCA one */
+	/* Forward this port traffic to a GWCA port */
+	eth_rswitch_write(global_dev, base_offset + RSWITCH_MFWD_FWPBFC0N,
+		1 << global_config->gwca_port_id);
+	/* Forward the GWCA port traffic to this port */
+	base_offset = global_config->mfwd_offset + 16 * global_config->gwca_port_id;
+	eth_rswitch_write(global_dev, base_offset + RSWITCH_MFWD_FWPBFC0N,
+		1 << tsn_config->id);
+}
+
 static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 {
 	const struct eth_rswitch_tsn_config *tsn_config = tsn_dev->config;
@@ -428,21 +469,8 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 		return ret;
 	}
 
-	/* Configure the forwarding engine for this port */
-	base_offset = global_config->mfwd_offset + 16 * tsn_config->id;
-	// TODO bits ajoutés à la main pour correspondre à la config d'U-Boot, vérifier l'utilité
-	eth_rswitch_write(global_dev, base_offset, RSWITCH_MFWD_FWPC0N_MACHLA |
-		BIT(28) | // VLANSA
-		BIT(27) | // MACHMA
-		BIT(20) | // MACDSA
-		BIT(9) | // L2SE
-		BIT(8) | // Moi, IP6OE
-		BIT(7) | // Moi, IP6TE
-		BIT(6) | // Moi, IP6UE
-		BIT(5) | // IP4OE
-		BIT(4) | // IP4TE
-		BIT(3) | // IP4UE
-		BIT(0)); // LTHTA
+	// TODO
+	eth_rswitch_tsn_forwarding_init(tsn_dev);
 
 	/* Enable the TSN agent clock */
 	base_offset = global_config->coma_offset + RSWITCH_COMA_RCEC;
@@ -670,7 +698,7 @@ static int eth_rswitch_device_init(const struct device *dev)
 	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RRC, RSWITCH_COMA_RRC_RR);
 	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RRC, 0);
 
-	/* Internally enable the controller clock only (each agent will enable its own clock later) */
+	/* Enable the controller clock only (each agent will enable its own clock later) */
 	eth_rswitch_write(dev, config->coma_offset + RSWITCH_COMA_RCEC, RSWITCH_COMA_RCEC_RCE);
 
 	/* Initialize the buffer pool */
@@ -738,12 +766,14 @@ DT_INST_FOREACH_STATUS_OKAY(ETH_RSWITCH_TSN_INIT);
 		DEVICE_MMIO_ROM_INIT(DT_DRV_INST(inst)), \
 		.mfwd_offset = DT_INST_PROP(inst, mfwd_reg_offset), \
 		.coma_offset = DT_INST_PROP(inst, coma_reg_offset), \
+		.gwca_offset = DT_INST_PROP(inst, gwca_reg_base_offset), \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)), \
 		.rsw3_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3, name), \
 		.rsw3_tsn_global_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3tsn, name), \
 		.rsw3_aes_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3aes, name), \
 		.rsw3_mfwd_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(inst, rsw3mfwd, name), \
-		.mdio_base_clk_freq = DT_INST_PROP(inst, mdio_base_clk_freq) \
+		.mdio_base_clk_freq = DT_INST_PROP(inst, mdio_base_clk_freq), \
+		.gwca_port_id = DT_INST_PROP(inst, gwca_port_id) \
 	}; \
 \
 	static struct eth_rswitch_data eth_rswitch_data_##inst; \

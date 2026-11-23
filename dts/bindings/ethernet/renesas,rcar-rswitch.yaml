@@ -36,11 +36,23 @@ properties:
     description: |
       TODO dire specifique a chaque port
 
+  gwca-reg-base-offset:
+    type: int
+    required: true
+    description: |
+      TODO dire specifique a chaque port
+
   tsna-count:
     type: int
     required: true
     description: |
-      How many TSNA (ETHA) are provided by the hardware
+      How many TSNA (ETHA) are provided by the hardware.
+
+  gwca-port-id:
+    type: int
+    required: true
+    description: |
+      The port ID of the first GWCA port (only this one is used for now).
 
  # ports:
  #   type: array

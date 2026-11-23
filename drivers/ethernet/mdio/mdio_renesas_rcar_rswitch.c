@@ -24,9 +24,8 @@ static int mdio_rswitch_c22_read(const struct device *dev, uint8_t prtad, uint8_
 	const struct mdio_rswitch_config *config = dev->config;
 
 	// TEST
-	LOG_ERR("mdio_rswitch_c22_read prtad=%d, devad=%d", prtad, devad);
+	//LOG_ERR("mdio_rswitch_c22_read prtad=%d, devad=%d", prtad, devad);
 
-	//return eth_rswitch_mdio_c22_read(config->tsn_dev, prtad, devad, data);
 	return eth_rswitch_mdio_read(config->tsn_dev, prtad, devad, 0, data, 0);
 }
 
@@ -36,7 +35,7 @@ static int mdio_rswitch_c22_write(const struct device *dev, uint8_t prtad, uint8
 	const struct mdio_rswitch_config *config = dev->config;
 
 	// TEST
-	LOG_ERR("mdio_rswitch_c22_write prtad=%d, devad=%d, data=0x%04X", prtad, devad, data);
+	//LOG_ERR("mdio_rswitch_c22_write prtad=%d, devad=%d, data=0x%04X", prtad, devad, data);
 
 	return eth_rswitch_mdio_write(config->tsn_dev, prtad, devad, 0, data, 0);
 }
