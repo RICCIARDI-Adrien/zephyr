@@ -134,12 +134,40 @@ LOG_MODULE_REGISTER(eth_rcar_rswitch, CONFIG_ETHERNET_LOG_LEVEL);
 /* R-Switch MAC reception MAC address configuration 1 register */
 #define RSWITCH_RMAC_MRMAC1 0x0088
 
-#define RSWITCH_TSN_COUNT 13
+/* R-Switch GWCA Mode Configuration register */
+#define RSWITCH_GWCA_GWMC 0x0000
+/* R-Switch GWCA Mode Configuration register bits */
+#define RSWITCH_GWCA_GWMC_OPC_MASK 0x03
+#define RSWITCH_GWCA_GWMC_OPC_DISABLE 1
+#define RSWITCH_GWCA_GWMC_OPC_CONFIG 2
+#define RSWITCH_GWCA_GWMC_OPC_OPERATION 3
+
+/* R-Switch GWCA Mode Status register */
+#define RSWITCH_GWCA_GWMS 0x0004
+/* R-Switch GWCA Mode Status register bits */
+#define RSWITCH_GWCA_GWMS_OPS_MASK 0x03
+#define RSWITCH_GWCA_GWMS_OPS_DISABLE 1
+#define RSWITCH_GWCA_GWMS_OPS_CONFIG 2
+#define RSWITCH_GWCA_GWMS_OPS_OPERATION 3
+
+/* R-Switch GWCA Multicast and DCNC Table Initialization Register Monitoring register */
+#define RSWITCH_GWCA_GWMTIRM 0x0100
+/* R-Switch GWCA Multicast and DCNC Table Initialization Register Monitoring register bits */
+#define RSWITCH_GWCA_GWMTIRM_MTR BIT(1)
+#define RSWITCH_GWCA_GWMTIRM_MTIOG BIT(0)
+
+/* R-Switch GWCA AXI RAM Initialization Register Monitoring register */
+#define RSWITCH_GWCA_GWARIRM 0x0380
+/* R-Switch GWCA AXI RAM Initialization Register Monitoring register bits */
+#define RSWITCH_GWCA_GWARIRM_ARR BIT(1)
+#define RSWITCH_GWCA_GWARIRM_ARIOG BIT(0)
+
+//#define RSWITCH_TSN_COUNT 13
 
 #define RSWITCH_TSNA_AREA_SIZE 0x1000
 #define RSWITCH_RMAC_AREA_SIZE 0x1000
 
-#define RSWITCH_DEFAULT_MDIO_BUS_FREQUENCY 2500000 /* In Hz */
+//#define RSWITCH_DEFAULT_MDIO_BUS_FREQUENCY 2500000 /* In Hz */
 
 struct eth_rswitch_global_config {
 	DEVICE_MMIO_ROM; /* Must be first */
@@ -462,6 +490,7 @@ static int eth_rswitch_tsn_device_init(const struct device *tsn_dev)
 	uint32_t base_offset, val, psmcs_reg;
 	int ret;
 
+	// TODO clock utile ?
 	ret = clock_control_on(global_config->clock_dev, tsn_config->tsnes_clk);
 	if (ret != 0) {
 		LOG_ERR("Failed to turn the tsn%d clock on (%d).", tsn_config->id, ret);
@@ -642,6 +671,55 @@ static const struct ethernet_api eth_rswitch_ethernet_api = {
 	.send = eth_rswitch_send
 };
 
+static int eth_rswitch_gwca_init(const struct device *global_dev)
+{
+	const struct eth_rswitch_global_config *global_config = global_dev->config;
+	uint32_t base_offset, val;
+	int ret;
+
+	/* Enable the GWCA agent clock */
+	base_offset = global_config->coma_offset + RSWITCH_COMA_RCEC;
+	val = eth_rswitch_read(global_dev, base_offset);
+	val |= 1 << global_config->gwca_port_id;
+	eth_rswitch_write(global_dev, base_offset, val);
+
+	/* Some registers can only be written in Configuration mode */
+	base_offset = global_config->gwca_offset;
+	eth_rswitch_write(global_dev, base_offset + RSWITCH_GWCA_GWMC,
+		RSWITCH_GWCA_GWMC_OPC_CONFIG);
+	ret = eth_rswitch_busy_wait(global_dev, base_offset + RSWITCH_GWCA_GWMS,
+		RSWITCH_GWCA_GWMS_OPS_MASK, RSWITCH_GWCA_GWMS_OPS_CONFIG);
+	if (ret != 0) {
+		LOG_ERR("Failed to switch GWCA %u to Configuration mode.",
+			global_config->gwca_port_id);
+		return ret;
+	}
+
+	/* Reset the multicast and DCNC table */
+	base_offset = global_config->gwca_offset + RSWITCH_GWCA_GWMTIRM;
+	eth_rswitch_write(global_dev, base_offset, RSWITCH_GWCA_GWMTIRM_MTIOG);
+	ret = eth_rswitch_busy_wait(global_dev, base_offset, RSWITCH_GWCA_GWMTIRM_MTR,
+		RSWITCH_GWCA_GWMTIRM_MTR);
+	if (ret != 0) {
+		LOG_ERR("Failed to reset the GWCA %u multicast table.",
+			global_config->gwca_port_id);
+		return ret;
+	}
+
+	/* Reset the AXI RAM */
+	base_offset = global_config->gwca_offset + RSWITCH_GWCA_GWARIRM;
+	eth_rswitch_write(global_dev, base_offset, RSWITCH_GWCA_GWARIRM_ARIOG);
+	ret = eth_rswitch_busy_wait(global_dev, base_offset, RSWITCH_GWCA_GWARIRM_ARR,
+		RSWITCH_GWCA_GWARIRM_ARR);
+	if (ret != 0) {
+		LOG_ERR("Failed to reset the GWCA %u AXI RAM.", global_config->gwca_port_id);
+		return ret;
+	}
+
+
+	return 0;
+}
+
 static int eth_rswitch_device_init(const struct device *global_dev)
 {
 	const struct eth_rswitch_global_config *global_config = global_dev->config;
@@ -710,6 +788,9 @@ static int eth_rswitch_device_init(const struct device *global_dev)
 		LOG_ERR("Failed to reset the buffer pool.");
 		return -EIO;
 	}
+
+	// TODO
+	eth_rswitch_gwca_init(global_dev);
 
 	LOG_DBG("R-Switch controller IPs version: 0x%08X.",
 		eth_rswitch_read(global_dev, global_config->coma_offset + RSWITCH_COMA_RIPV));
